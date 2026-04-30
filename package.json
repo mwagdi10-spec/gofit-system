@@ -1,17 +1,12 @@
 {
   "name": "gofit-system",
   "homepage": "https://mwagdi10-spec.github.io/gofit-system",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
   "scripts": {
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
-  },
+    "deploy": "npm run build && gh-pages -d dist"
+  }
+,
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.4",
     "firebase": "^12.12.1",

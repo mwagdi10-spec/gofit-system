@@ -6,7 +6,7 @@ import {
   doc, query, orderBy, deleteDoc, updateDoc, setDoc
 } from 'firebase/firestore';
 import {
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
@@ -25,8 +25,34 @@ const db           = getFirestore(app);
 const APP_ID       = "gofit-production";
 const TRAINER_MAIL = "admin@gofit.com";
 const CATEGORIES   = ['WARM-UP','ACTIVATION','SKILL','RESISTANCE','CARDIO','COOL-DOWN'];
+const GEMINI_KEY   = "AIzaSyBH174p9h9yFpsnGVvLK2u0c9PCBv5T5mk";
 
-// ─── Capitalize: first letter of each word only ───────────────────────────────
+// ─── Muscle Group Mapping ─────────────────────────────────────────────────────
+const MUSCLE_COLORS = {
+  'Chest':      '#ef4444',
+  'Back':       '#3b82f6',
+  'Quads':      '#f59e0b',
+  'Hamstrings': '#8b5cf6',
+  'Core':       '#10b981',
+  'Shoulders':  '#ec4899',
+  'Arms':       '#06b6d4',
+  'Glutes':     '#f97316',
+};
+
+function getMuscleGroup(exerciseName = '') {
+  const n = exerciseName.toLowerCase();
+  if (/bench|chest|fly|pec|push.?up|dip/i.test(n))                              return 'Chest';
+  if (/row|pull|lat|deadlift|back|chin/i.test(n))                               return 'Back';
+  if (/squat|leg press|lunge|quad|extension/i.test(n))                          return 'Quads';
+  if (/hamstring|curl|romanian|rdl|nordic/i.test(n))                            return 'Hamstrings';
+  if (/plank|crunch|ab|core|sit.?up|cable crunch|wheel/i.test(n))               return 'Core';
+  if (/shoulder|overhead|press|lateral raise|front raise|face pull/i.test(n))   return 'Shoulders';
+  if (/bicep|tricep|curl|arm|pushdown|extension/i.test(n))                      return 'Arms';
+  if (/glute|hip thrust|bridge|kickback/i.test(n))                              return 'Glutes';
+  return null;
+}
+
+// ─── Capitalize ───────────────────────────────────────────────────────────────
 function titleCase(str = '') {
   return str.replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w/g, c => c.toLowerCase());
 }
@@ -39,7 +65,7 @@ function formatName(raw = '') {
   const hasCable    = /cable/i.test(raw);
   const isBW = /push.?up|pull.?up|\bdip\b|plank|crunch|sit.?up|burpee|mountain climber|jumping jack/i.test(raw)
     && !hasDumbbell && !hasBarbell && !/cable|machine/i.test(raw);
-  let name = raw.replace(/dumbbell\s*/gi, '').replace(/barbell\s*/gi, '').replace(/\s+/g, ' ').trim();
+  let name = raw.replace(/dumbbell\s*/gi,'').replace(/barbell\s*/gi,'').replace(/\s+/g,' ').trim();
   const cap = titleCase(name);
   if (hasDumbbell) return `${cap} (DB)`;
   if (hasBarbell)  return `${cap} (Barbell)`;
@@ -48,7 +74,7 @@ function formatName(raw = '') {
   return cap;
 }
 
-// ─── Hook: Back Button closes modal ──────────────────────────────────────────
+// ─── Back Button Hook ─────────────────────────────────────────────────────────
 function useBackButton(isOpen, onClose) {
   useEffect(() => {
     if (!isOpen) return;
@@ -112,6 +138,48 @@ function SearchableDropdown({ options, value, onChange, placeholder = 'Search ex
   );
 }
 
+// ─── Client Selector Dropdown ─────────────────────────────────────────────────
+function ClientSelector({ clientNames, value, onChange, placeholder = 'Select Client...' }) {
+  const [open, setOpen] = useState(false);
+  const ref             = useRef(null);
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mouseup', h);
+    return () => document.removeEventListener('mouseup', h);
+  }, []);
+  const clients = useMemo(() =>
+    Object.entries(clientNames)
+      .map(([phone, data]) => ({ phone, name: typeof data === 'object' ? data.name || phone : data || phone }))
+      .filter(c => /^[\d\+]{7,15}$/.test(c.phone))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  , [clientNames]);
+  const selected = clients.find(c => c.phone === value);
+  return (
+    <div ref={ref} className="relative w-full">
+      <div onClick={() => setOpen(o => !o)} className="w-full p-3 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-sm cursor-pointer flex justify-between items-center gap-2 select-none">
+        <span className="text-slate-400 text-xs">▾</span>
+        <span className={selected ? 'text-slate-900' : 'text-slate-400'}>{selected ? titleCase(selected.name) : placeholder}</span>
+      </div>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl overflow-hidden">
+          <div className="max-h-48 overflow-y-auto">
+            {clients.length === 0
+              ? <div className="p-3 text-center text-slate-400 text-xs font-black">No clients yet</div>
+              : clients.map(c => (
+                <div key={c.phone} onMouseDown={() => { onChange(c.phone); setOpen(false); }}
+                  className="p-3 text-left text-sm font-black hover:bg-emerald-50 cursor-pointer border-b border-slate-50 last:border-0 flex justify-between items-center">
+                  <span>{titleCase(c.name)}</span>
+                  <span className="text-[10px] text-slate-400 font-bold">{c.phone}</span>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Add Client Modal ─────────────────────────────────────────────────────────
 function AddClientModal({ onClose, db, appId }) {
   const [saving, setSaving] = useState(false);
@@ -127,17 +195,17 @@ function AddClientModal({ onClose, db, appId }) {
     if (!name || !phone) { alert('Name and phone are required'); return; }
     setSaving(true);
     try {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'client_names', phone), {
-        name, phone, age: ageRef.current?.value?.trim(), gender, height: heightRef.current?.value?.trim(),
-        goal, level, injuries: injuriesRef.current?.value?.trim(), daysPerWeek: days, createdAt: serverTimestamp()
+      await setDoc(doc(db,'artifacts',appId,'public','data','client_names',phone), {
+        name, phone, age: ageRef.current?.value?.trim(), gender,
+        height: heightRef.current?.value?.trim(), goal, level,
+        injuries: injuriesRef.current?.value?.trim(), daysPerWeek: days, createdAt: serverTimestamp()
       });
       onClose();
     } catch (e) { console.error(e); setSaving(false); }
   };
   const inp = 'bg-slate-50 border-slate-200 text-slate-900';
-  const lbl = 'text-slate-500';
   const Field = ({ label, children }) => (
-    <div><label className={`text-[10px] font-black uppercase block mb-1 ${lbl}`}>{label}</label>{children}</div>
+    <div><label className="text-[10px] font-black uppercase block mb-1 text-slate-500">{label}</label>{children}</div>
   );
   return (
     <div className="fixed inset-0 z-[998] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -151,12 +219,12 @@ function AddClientModal({ onClose, db, appId }) {
           <Field label="Phone Number *"><input ref={phoneRef} type="text" defaultValue="" placeholder="01xxxxxxxxx" autoComplete="off" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Age"><input ref={ageRef} type="number" defaultValue="" placeholder="25" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
-            <Field label="Gender"><select value={gender} onChange={e => setGender(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none ${inp}`}><option>Male</option><option>Female</option></select></Field>
+            <Field label="Gender"><select value={gender} onChange={e => setGender(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}><option>Male</option><option>Female</option></select></Field>
           </div>
           <Field label="Height (cm)"><input ref={heightRef} type="number" defaultValue="" placeholder="175" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
-          <Field label="Main Goal"><select value={goal} onChange={e => setGoal(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none ${inp}`}><option>Weight Loss</option><option>Muscle Gain</option><option>General Fitness</option></select></Field>
-          <Field label="Fitness Level"><select value={level} onChange={e => setLevel(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none ${inp}`}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field>
-          <Field label="Days / Week"><select value={days} onChange={e => setDays(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none ${inp}`}>{['2','3','4','5','6'].map(d => <option key={d}>{d}</option>)}</select></Field>
+          <Field label="Main Goal"><select value={goal} onChange={e => setGoal(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}><option>Weight Loss</option><option>Muscle Gain</option><option>General Fitness</option></select></Field>
+          <Field label="Fitness Level"><select value={level} onChange={e => setLevel(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field>
+          <Field label="Days / Week"><select value={days} onChange={e => setDays(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}>{['2','3','4','5','6'].map(d => <option key={d}>{d}</option>)}</select></Field>
           <Field label="Injuries / Health Issues"><textarea ref={injuriesRef} defaultValue="" placeholder="Any injuries or health concerns..." rows={2} className={`w-full p-3 border-2 rounded-2xl font-bold text-sm outline-none focus:border-emerald-500 resize-none ${inp}`} /></Field>
         </div>
         <div className="p-5 border-t border-slate-200">
@@ -171,27 +239,28 @@ function AddClientModal({ onClose, db, appId }) {
 function EditClientModal({ client, onClose, db, appId }) {
   const [saving, setSaving] = useState(false);
   const nameRef = useRef(); const ageRef = useRef(); const heightRef = useRef(); const injuriesRef = useRef();
-  const [gender, setGender]   = useState(client.gender || 'Male');
-  const [goal, setGoal]       = useState(client.goal || 'Weight Loss');
-  const [level, setLevel]     = useState(client.level || 'Beginner');
-  const [days, setDays]       = useState(client.daysPerWeek || '3');
+  const [gender, setGender] = useState(client.gender || 'Male');
+  const [goal, setGoal]     = useState(client.goal || 'Weight Loss');
+  const [level, setLevel]   = useState(client.level || 'Beginner');
+  const [days, setDays]     = useState(client.daysPerWeek || '3');
   useBackButton(true, onClose);
   const handleSave = async () => {
     const name = nameRef.current?.value?.trim();
     if (!name) { alert('Name is required'); return; }
     setSaving(true);
     try {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'client_names', client.phone), {
+      await setDoc(doc(db,'artifacts',appId,'public','data','client_names',client.phone), {
         name, phone: client.phone, age: ageRef.current?.value?.trim(), gender,
         height: heightRef.current?.value?.trim(), goal, level,
-        injuries: injuriesRef.current?.value?.trim(), daysPerWeek: days, createdAt: client.createdAt || serverTimestamp()
+        injuries: injuriesRef.current?.value?.trim(), daysPerWeek: days,
+        createdAt: client.createdAt || serverTimestamp()
       }, { merge: true });
       onClose();
     } catch (e) { console.error(e); setSaving(false); }
   };
   const handleDelete = async () => {
-    if (!window.confirm(`Delete client "${client.name}"? This cannot be undone.`)) return;
-    try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'client_names', client.phone)); onClose(); }
+    if (!window.confirm(`Delete client "${client.name}"?`)) return;
+    try { await deleteDoc(doc(db,'artifacts',appId,'public','data','client_names',client.phone)); onClose(); }
     catch (e) { console.error(e); }
   };
   const inp = 'bg-slate-50 border-slate-200 text-slate-900';
@@ -206,17 +275,17 @@ function EditClientModal({ client, onClose, db, appId }) {
           <span className="text-emerald-400 font-black text-base uppercase tracking-widest">Edit Client</span>
         </div>
         <div className="p-6 space-y-3 max-h-[65vh] overflow-y-auto">
-          <Field label="Full Name *"><input ref={nameRef} type="text" defaultValue={client.name || ''} placeholder="Client Name" autoComplete="off" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
-          <Field label="Phone (read-only)"><div className={`w-full p-3 border-2 rounded-2xl font-black text-sm opacity-50 ${inp}`}>{client.phone}</div></Field>
+          <Field label="Full Name *"><input ref={nameRef} type="text" defaultValue={client.name||''} placeholder="Client Name" autoComplete="off" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
+          <Field label="Phone (read-only)"><div className={`w-full p-3 border-2 rounded-2xl font-black text-sm opacity-50 bg-slate-50 border-slate-200`}>{client.phone}</div></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Age"><input ref={ageRef} type="number" defaultValue={client.age || ''} placeholder="25" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
-            <Field label="Gender"><select value={gender} onChange={e => setGender(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none ${inp}`}><option>Male</option><option>Female</option></select></Field>
+            <Field label="Age"><input ref={ageRef} type="number" defaultValue={client.age||''} placeholder="25" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
+            <Field label="Gender"><select value={gender} onChange={e => setGender(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}><option>Male</option><option>Female</option></select></Field>
           </div>
-          <Field label="Height (cm)"><input ref={heightRef} type="number" defaultValue={client.height || ''} placeholder="175" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
-          <Field label="Main Goal"><select value={goal} onChange={e => setGoal(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none ${inp}`}><option>Weight Loss</option><option>Muscle Gain</option><option>General Fitness</option></select></Field>
-          <Field label="Fitness Level"><select value={level} onChange={e => setLevel(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none ${inp}`}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field>
-          <Field label="Days / Week"><select value={days} onChange={e => setDays(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none ${inp}`}>{['2','3','4','5','6'].map(d => <option key={d}>{d}</option>)}</select></Field>
-          <Field label="Injuries / Health Issues"><textarea ref={injuriesRef} defaultValue={client.injuries || ''} placeholder="Any injuries..." rows={2} className={`w-full p-3 border-2 rounded-2xl font-bold text-sm outline-none focus:border-emerald-500 resize-none ${inp}`} /></Field>
+          <Field label="Height (cm)"><input ref={heightRef} type="number" defaultValue={client.height||''} placeholder="175" className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`} /></Field>
+          <Field label="Main Goal"><select value={goal} onChange={e => setGoal(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}><option>Weight Loss</option><option>Muscle Gain</option><option>General Fitness</option></select></Field>
+          <Field label="Fitness Level"><select value={level} onChange={e => setLevel(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></Field>
+          <Field label="Days / Week"><select value={days} onChange={e => setDays(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}>{['2','3','4','5','6'].map(d => <option key={d}>{d}</option>)}</select></Field>
+          <Field label="Injuries / Health Issues"><textarea ref={injuriesRef} defaultValue={client.injuries||''} placeholder="Any injuries..." rows={2} className={`w-full p-3 border-2 rounded-2xl font-bold text-sm outline-none focus:border-emerald-500 resize-none ${inp}`} /></Field>
         </div>
         <div className="p-5 border-t border-slate-200 space-y-3">
           <button onClick={handleSave} disabled={saving} className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all disabled:opacity-50">{saving ? 'Saving...' : '💾 Save Changes'}</button>
@@ -227,19 +296,19 @@ function EditClientModal({ client, onClose, db, appId }) {
   );
 }
 
-// ─── Client Profile Modal ─────────────────────────────────────────────────────
-function ClientProfileModal({ client, onClose, onEdit }) {
+// ─── Client Profile Modal — with View Plan button ─────────────────────────────
+function ClientProfileModal({ client, onClose, onEdit, onViewPlan }) {
   useBackButton(!!client, onClose);
   if (!client) return null;
   const fields = [
-    { label: 'Phone',     val: client.phone },
-    { label: 'Age',       val: client.age ? `${client.age} yrs` : '—' },
-    { label: 'Gender',    val: client.gender || '—' },
-    { label: 'Height',    val: client.height ? `${client.height} cm` : '—' },
-    { label: 'Goal',      val: client.goal || '—' },
-    { label: 'Level',     val: client.level || '—' },
-    { label: 'Days/Week', val: client.daysPerWeek ? `${client.daysPerWeek} days` : '—' },
-    { label: 'Injuries',  val: client.injuries || 'None' },
+    { label:'Phone',     val:client.phone },
+    { label:'Age',       val:client.age ? `${client.age} yrs` : '—' },
+    { label:'Gender',    val:client.gender || '—' },
+    { label:'Height',    val:client.height ? `${client.height} cm` : '—' },
+    { label:'Goal',      val:client.goal || '—' },
+    { label:'Level',     val:client.level || '—' },
+    { label:'Days/Week', val:client.daysPerWeek ? `${client.daysPerWeek} days` : '—' },
+    { label:'Injuries',  val:client.injuries || 'None' },
   ];
   return (
     <div className="fixed inset-0 z-[998] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
@@ -248,7 +317,7 @@ function ClientProfileModal({ client, onClose, onEdit }) {
           <button onClick={onClose} className="text-slate-400 font-black text-sm">✕</button>
           <span className="text-emerald-400 font-black text-base">{titleCase(client.name)}</span>
         </div>
-        <div className="p-5 space-y-2 max-h-[55vh] overflow-y-auto">
+        <div className="p-5 space-y-2 max-h-[50vh] overflow-y-auto">
           {fields.map(f => (
             <div key={f.label} className="flex justify-between items-center p-3 rounded-xl bg-slate-50">
               <span className="text-xs font-black text-slate-500 uppercase">{f.label}</span>
@@ -256,88 +325,81 @@ function ClientProfileModal({ client, onClose, onEdit }) {
             </div>
           ))}
         </div>
-        <div className="p-4 border-t border-slate-200 flex gap-3">
-          <button onClick={onEdit} className="flex-1 bg-slate-900 text-emerald-400 py-3 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all">✏️ Edit</button>
-          <button onClick={onClose} className="flex-1 border-2 border-slate-200 text-slate-400 py-3 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all">Close</button>
+        <div className="p-4 border-t border-slate-200 grid grid-cols-3 gap-2">
+          <button onClick={onViewPlan} className="col-span-1 bg-emerald-500 text-white py-3 rounded-2xl font-black text-xs uppercase active:scale-95 transition-all">📋 Plan</button>
+          <button onClick={onEdit} className="col-span-1 bg-slate-900 text-emerald-400 py-3 rounded-2xl font-black text-xs uppercase active:scale-95 transition-all">✏️ Edit</button>
+          <button onClick={onClose} className="col-span-1 border-2 border-slate-200 text-slate-400 py-3 rounded-2xl font-black text-xs uppercase active:scale-95 transition-all">Close</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Day Template Assign Modal ────────────────────────────────────────────────
+// ─── Day Template Modal ───────────────────────────────────────────────────────
 function DayTemplateModal({ onClose, db, appId, libraryData, targetClient, sessionName }) {
   const [selected, setSelected] = useState([]);
   const [saving, setSaving]     = useState(false);
   const [search, setSearch]     = useState('');
   const [catFilter, setCatFilter] = useState('ALL');
   useBackButton(true, onClose);
-
   const filtered = useMemo(() =>
     libraryData.filter(ex => {
       const matchCat = catFilter === 'ALL' || ex.category === catFilter;
       const matchQ   = !search || ex.name.toLowerCase().includes(search.toLowerCase());
       return matchCat && matchQ;
     }), [libraryData, catFilter, search]);
-
   const toggle = id => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
-
   const handleAssign = async () => {
     if (!selected.length) return;
-    if (!targetClient || !sessionName) { alert('Please set Phone and Day first'); return; }
+    if (!targetClient || !sessionName) { alert('Please select a client and day first'); return; }
     setSaving(true);
     const base = Date.now();
     for (let i = 0; i < selected.length; i++) {
       const ex = libraryData.find(l => l.id === selected[i]);
-      if (ex) {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'workouts'), {
-          name: ex.name, category: ex.category, gifUrl: ex.gifUrl || '',
-          sets: '3', reps: '10', tempo: '', coachNote: '',
-          assignedTo: targetClient, day: sessionName, orderIndex: base + i
-        });
-      }
+      if (ex) await addDoc(collection(db,'artifacts',appId,'public','data','workouts'), {
+        name: ex.name, category: ex.category, gifUrl: ex.gifUrl||'',
+        sets:'3', reps:'10', tempo:'', coachNote:'',
+        assignedTo: targetClient, day: sessionName, orderIndex: base + i
+      });
     }
     onClose();
     alert(`✅ Assigned ${selected.length} exercises`);
   };
-
   return (
     <div className="fixed inset-0 z-[998] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '85vh' }}>
+      <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight:'85vh' }}>
         <div className="bg-slate-900 p-5 flex justify-between items-center shrink-0">
           <button onClick={onClose} className="text-slate-400 font-black text-sm hover:text-white">✕ Cancel</button>
-          <span className="text-emerald-400 font-black text-sm uppercase tracking-widest">Assign Full Day ({selected.length} selected)</span>
+          <span className="text-emerald-400 font-black text-sm uppercase">Assign Full Day ({selected.length} selected)</span>
         </div>
         <div className="p-4 border-b border-slate-100 shrink-0 space-y-2">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search exercises..." className="w-full p-2.5 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50" />
           <div className="flex flex-wrap gap-1">
-            {['ALL', ...CATEGORIES].map(cat => (
+            {['ALL',...CATEGORIES].map(cat => (
               <button key={cat} onClick={() => setCatFilter(cat)}
-                className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${catFilter === cat ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                {cat}
-              </button>
+                className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${catFilter===cat?'bg-emerald-500 text-white':'bg-slate-100 text-slate-500'}`}>{cat}</button>
             ))}
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {filtered.map(ex => {
-            const isSelected = selected.includes(ex.id);
+            const isSel = selected.includes(ex.id);
             return (
               <div key={ex.id} onClick={() => toggle(ex.id)}
-                className={`flex items-center justify-between p-3 rounded-2xl border-2 cursor-pointer transition-all ${isSelected ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}>
+                className={`flex items-center justify-between p-3 rounded-2xl border-2 cursor-pointer transition-all ${isSel?'border-emerald-500 bg-emerald-50':'border-slate-100 bg-slate-50 hover:border-slate-300'}`}>
                 <div className="text-left">
                   <span className="font-black text-sm text-slate-900 capitalize">{formatName(ex.name)}</span>
                   <p className="text-[10px] font-black text-emerald-500 uppercase">{ex.category}</p>
                 </div>
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300'}`}>
-                  {isSelected && <span className="text-[10px] font-black">✓</span>}
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSel?'bg-emerald-500 border-emerald-500 text-white':'border-slate-300'}`}>
+                  {isSel && <span className="text-[10px] font-black">✓</span>}
                 </div>
               </div>
             );
           })}
         </div>
         <div className="p-4 border-t border-slate-100 shrink-0">
-          <button onClick={handleAssign} disabled={saving || !selected.length}
+          <button onClick={handleAssign} disabled={saving||!selected.length}
             className="w-full bg-slate-900 text-emerald-400 py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all disabled:opacity-40">
             {saving ? 'Assigning...' : `Assign ${selected.length} Exercises ✅`}
           </button>
@@ -347,51 +409,117 @@ function DayTemplateModal({ onClose, db, appId, libraryData, targetClient, sessi
   );
 }
 
-// ─── AI Assistant ─────────────────────────────────────────────────────────────
+// ─── Client Plan View Modal ───────────────────────────────────────────────────
+function ClientPlanModal({ client, workouts, onClose }) {
+  useBackButton(!!client, onClose);
+  if (!client) return null;
+  const clientWorkouts = workouts.filter(w => w.assignedTo === client.phone);
+  const days = [...new Set(clientWorkouts.map(w => w.day))].filter(Boolean).sort();
+  const [selectedDay, setSelectedDay] = useState(days[0] || '');
+  const dayWorkouts = clientWorkouts.filter(w => w.day === selectedDay).sort((a,b) => a.orderIndex - b.orderIndex);
+  return (
+    <div className="fixed inset-0 z-[998] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight:'85vh' }} onClick={e => e.stopPropagation()}>
+        <div className="bg-slate-900 p-5 flex justify-between items-center shrink-0">
+          <button onClick={onClose} className="text-slate-400 font-black text-sm">✕</button>
+          <span className="text-emerald-400 font-black text-base">{titleCase(client.name)} — Plan</span>
+        </div>
+        {/* Day tabs */}
+        <div className="p-4 border-b border-slate-100 shrink-0">
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar">
+            {days.length === 0
+              ? <p className="text-xs font-black text-slate-400 w-full text-center py-2">No days assigned yet</p>
+              : days.map((d, i) => (
+                <button key={d} onClick={() => setSelectedDay(d)}
+                  className={`px-5 py-2.5 rounded-2xl font-black text-xs shrink-0 transition-all border-2 ${selectedDay===d?'bg-slate-900 text-emerald-400 border-slate-900':'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                  Day {i+1}
+                </button>
+              ))
+            }
+          </div>
+        </div>
+        {/* Exercises */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {dayWorkouts.length === 0
+            ? <div className="text-center py-16 text-slate-300 font-black text-xl uppercase tracking-widest">No Exercises</div>
+            : dayWorkouts.map((ex, i) => (
+              <div key={ex.id} className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border-2 border-slate-100">
+                <span className="w-7 h-7 bg-slate-900 text-emerald-400 rounded-full flex items-center justify-center font-black text-xs shrink-0">{i+1}</span>
+                <div className="text-left flex-1">
+                  <span className="font-black text-sm text-slate-900 capitalize">{formatName(ex.name)}</span>
+                  <p className="text-[10px] font-bold text-slate-500">{ex.sets} sets × {ex.reps} reps{ex.tempo ? ` · ${ex.tempo}` : ''}</p>
+                  {ex.coachNote && <p className="text-[10px] text-emerald-500 font-bold">💬 {ex.coachNote}</p>}
+                </div>
+                <span className={`text-[9px] font-black px-2 py-1 rounded-lg uppercase ${
+                  getMuscleGroup(ex.name) ? 'text-white' : 'bg-slate-100 text-slate-400'
+                }`} style={getMuscleGroup(ex.name) ? { background: MUSCLE_COLORS[getMuscleGroup(ex.name)] || '#94a3b8' } : {}}>
+                  {getMuscleGroup(ex.name) || ex.category}
+                </span>
+              </div>
+            ))
+          }
+        </div>
+        <div className="p-4 border-t border-slate-100 shrink-0">
+          <p className="text-center text-[10px] font-black text-slate-400">{clientWorkouts.length} total exercises across {days.length} days</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AI Assistant — Gemini ────────────────────────────────────────────────────
 function AIAssistant({ onClose, clientData }) {
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'مرحباً Coach! 👋\nأنا GoFit AI — اسألني في أي حاجة تخص التدريب أو العملاء أو NASM OPT.' }
+    { role: 'model', content: 'مرحباً Coach! 👋\nأنا GoFit AI — اسألني في أي حاجة تخص التدريب أو العملاء أو NASM OPT.' }
   ]);
   const [input, setInput]     = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef             = useRef(null);
   const inputRef              = useRef(null);
   useBackButton(true, onClose);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }); }, [messages]);
 
   const send = useCallback(async () => {
     if (!input.trim() || loading) return;
     const userMsg = input.trim();
     setInput('');
     setTimeout(() => inputRef.current?.focus(), 50);
-    setMessages(p => [...p, { role: 'user', content: userMsg }]);
+    setMessages(p => [...p, { role:'user', content:userMsg }]);
     setLoading(true);
     try {
-      const history = messages.filter((_, i) => i > 0).map(m => ({ role: m.role, content: m.content }));
-      history.push({ role: 'user', content: userMsg });
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: `أنت GoFit AI، مساعد ذكي متخصص في التدريب الرياضي واللياقة البدنية بناءً على NASM OPT Model. تساعد المدرب. أجب بإيجاز وعملياً باللغة العربية أو الإنجليزية حسب سؤال المستخدم. ${clientData ? `بيانات العملاء: ${JSON.stringify(clientData.map(c => ({ name: c.name, goal: c.goal, level: c.level })))}` : ''}`,
-          messages: history
-        })
-      });
+      // Build Gemini chat history (exclude first greeting)
+      const history = messages.slice(1).map(m => ({
+        role: m.role === 'assistant' ? 'model' : m.role,
+        parts: [{ text: m.content }]
+      }));
+
+      const systemPrompt = `أنت GoFit AI، مساعد ذكي متخصص في التدريب الرياضي واللياقة البدنية بناءً على NASM OPT Model. تساعد المدرب الشخصي. أجب بإيجاز وعملياً باللغة العربية أو الإنجليزية حسب سؤال المستخدم. ${clientData?.length ? `بيانات العملاء الحاليين: ${JSON.stringify(clientData.map(c => ({ name:c.name, goal:c.goal, level:c.level })))}` : ''}`;
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: [...history, { role:'user', parts:[{ text:userMsg }] }],
+            generationConfig: { maxOutputTokens:1000, temperature:0.7 }
+          })
+        }
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data  = await res.json();
-      const reply = data.content?.[0]?.text || 'حدث خطأ، حاول مجدداً.';
-      setMessages(p => [...p, { role: 'assistant', content: reply }]);
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'حدث خطأ، حاول مجدداً.';
+      setMessages(p => [...p, { role:'model', content:reply }]);
     } catch (e) {
-      setMessages(p => [...p, { role: 'assistant', content: `❌ خطأ في الاتصال: ${e.message}` }]);
+      setMessages(p => [...p, { role:'model', content:`❌ خطأ في الاتصال: ${e.message}` }]);
     }
     setLoading(false);
   }, [input, loading, messages, clientData]);
 
   return (
     <div className="fixed inset-0 z-[997] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col" style={{ height: '80vh' }}>
+      <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col" style={{ height:'80vh' }}>
         <div className="bg-slate-900 p-4 flex justify-between items-center shrink-0">
           <button onClick={onClose} className="text-slate-400 font-black text-sm">✕</button>
           <div className="flex items-center gap-2">
@@ -401,8 +529,8 @@ function AIAssistant({ onClose, clientData }) {
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] p-3 rounded-2xl text-sm font-bold leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'bg-slate-900 text-emerald-400 rounded-br-md' : 'bg-slate-100 text-slate-800 rounded-bl-md'}`}>
+            <div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
+              <div className={`max-w-[85%] p-3 rounded-2xl text-sm font-bold leading-relaxed whitespace-pre-wrap ${m.role==='user'?'bg-slate-900 text-emerald-400 rounded-br-md':'bg-slate-100 text-slate-800 rounded-bl-md'}`}>
                 {m.content}
               </div>
             </div>
@@ -410,7 +538,7 @@ function AIAssistant({ onClose, clientData }) {
           {loading && (
             <div className="flex justify-start">
               <div className="p-3 rounded-2xl rounded-bl-md bg-slate-100">
-                <div className="flex gap-1">{[0,1,2].map(i => <div key={i} className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay:`${i*0.15}s` }} />)}</div>
+                <div className="flex gap-1">{[0,1,2].map(i=><div key={i} className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{animationDelay:`${i*0.15}s`}}/>)}</div>
               </div>
             </div>
           )}
@@ -418,8 +546,8 @@ function AIAssistant({ onClose, clientData }) {
         </div>
         <div className="p-4 border-t border-slate-200 shrink-0">
           <div className="flex gap-2">
-            <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Ask GoFit AI..." className="flex-1 p-3 border-2 border-slate-200 rounded-2xl text-sm font-bold outline-none focus:border-emerald-500 bg-slate-50" />
-            <button onClick={send} disabled={loading || !input.trim()} className="bg-emerald-500 text-white px-5 rounded-2xl font-black text-sm disabled:opacity-40 active:scale-95 transition-all">↑</button>
+            <input ref={inputRef} type="text" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask GoFit AI..." className="flex-1 p-3 border-2 border-slate-200 rounded-2xl text-sm font-bold outline-none focus:border-emerald-500 bg-slate-50" />
+            <button onClick={send} disabled={loading||!input.trim()} className="bg-emerald-500 text-white px-5 rounded-2xl font-black text-sm disabled:opacity-40 active:scale-95 transition-all">↑</button>
           </div>
         </div>
       </div>
@@ -432,108 +560,98 @@ function AIAssistant({ onClose, clientData }) {
 // ══════════════════════════════════════════════════════════════════════════════
 function ExerciseRow({ exercise, db, appId, identifier, allLogs, sessionFinished }) {
   const setsCount = parseInt(exercise.sets) || 3;
-  const [sets, setSets]           = useState(Array.from({ length: setsCount }).map(() => ({ weight: '', reps: exercise.reps || '10' })));
+  const [sets, setSets]           = useState(Array.from({length:setsCount}).map(()=>({weight:'',reps:exercise.reps||'10'})));
   const [isSaved, setIsSaved]     = useState(false);
   const [isSkipped, setIsSkipped] = useState(false);
   const [showGif, setShowGif]     = useState(false);
 
-  useEffect(() => { if (sessionFinished) setIsSaved(false); }, [sessionFinished]);
-
-  useEffect(() => {
+  useEffect(()=>{ if(sessionFinished) setIsSaved(false); },[sessionFinished]);
+  useEffect(()=>{
     const today = new Date().toLocaleDateString('ar-EG');
-    const saved = allLogs.some(l => l.exerciseId === exercise.id && l.clientName === identifier && l.completedAt?.toDate().toLocaleDateString('ar-EG') === today);
-    if (saved) setIsSaved(true);
-  }, [allLogs, exercise.id, identifier]);
+    const saved = allLogs.some(l=>l.exerciseId===exercise.id&&l.clientName===identifier&&l.completedAt?.toDate().toLocaleDateString('ar-EG')===today);
+    if(saved) setIsSaved(true);
+  },[allLogs,exercise.id,identifier]);
 
-  const bestWeight = useMemo(() => {
-    const logs = allLogs.filter(l => l.exerciseId === exercise.id && l.clientName === identifier);
-    if (!logs.length) return 0;
-    return Math.max(...logs.flatMap(l => l.setsData?.map(s => parseFloat(s.weight) || 0) || [0]));
-  }, [allLogs, exercise.id, identifier]);
+  const bestWeight = useMemo(()=>{
+    const logs = allLogs.filter(l=>l.exerciseId===exercise.id&&l.clientName===identifier);
+    if(!logs.length) return 0;
+    return Math.max(...logs.flatMap(l=>l.setsData?.map(s=>parseFloat(s.weight)||0)||[0]));
+  },[allLogs,exercise.id,identifier]);
 
   const handleSave = async () => {
-    if (isSaved || isSkipped) return;
+    if(isSaved||isSkipped) return;
     try {
-      const currentMax = Math.max(...sets.map(s => parseFloat(s.weight) || 0));
-      const isPR       = currentMax > bestWeight && bestWeight > 0;
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), {
-        exerciseId: exercise.id, clientName: identifier, setsData: sets,
-        completedAt: serverTimestamp(), exerciseName: exercise.name, category: exercise.category, isPR
+      const currentMax = Math.max(...sets.map(s=>parseFloat(s.weight)||0));
+      const isPR = currentMax>bestWeight&&bestWeight>0;
+      await addDoc(collection(db,'artifacts',appId,'public','data','logs'),{
+        exerciseId:exercise.id, clientName:identifier, setsData:sets,
+        completedAt:serverTimestamp(), exerciseName:exercise.name, category:exercise.category, isPR
       });
       setIsSaved(true);
-    } catch (e) { console.error(e); }
+    } catch(e){ console.error(e); }
   };
 
-  const saved = isSaved && !sessionFinished;
-  // Single set: center the box and make it narrower
+  const saved    = isSaved && !sessionFinished;
   const isSingle = setsCount === 1;
 
   return (
     <>
-      {showGif && exercise.gifUrl && <GifPopup url={exercise.gifUrl} onClose={() => setShowGif(false)} />}
-      <div className={`p-5 mb-4 rounded-[2.5rem] border-[2.5px] shadow-lg transition-all duration-300 bg-white ${saved ? '!border-emerald-500 shadow-emerald-100 bg-emerald-50/30' : isSkipped ? 'opacity-40 grayscale border-slate-200' : 'border-slate-200'}`}>
+      {showGif&&exercise.gifUrl&&<GifPopup url={exercise.gifUrl} onClose={()=>setShowGif(false)}/>}
+      <div className={`p-5 mb-4 rounded-[2.5rem] border-[2.5px] shadow-lg transition-all duration-300 bg-white ${saved?'!border-emerald-500 shadow-emerald-100 bg-emerald-50/30':isSkipped?'opacity-40 grayscale border-slate-200':'border-slate-200'}`}>
         <div className="flex flex-col gap-4 font-black">
-
-          {/* Header */}
           <div className="flex flex-col gap-2 text-left">
-            <h3 onClick={() => exercise.gifUrl && setShowGif(true)}
-              className={`text-lg font-black capitalize tracking-tight leading-snug text-left ${exercise.gifUrl ? 'cursor-pointer underline decoration-dotted decoration-emerald-400 underline-offset-4' : ''} text-slate-900`}>
+            <h3 onClick={()=>exercise.gifUrl&&setShowGif(true)}
+              className={`text-lg font-black capitalize tracking-tight leading-snug text-left ${exercise.gifUrl?'cursor-pointer underline decoration-dotted decoration-emerald-400 underline-offset-4':''} text-slate-900`}>
               {formatName(exercise.name)}
             </h3>
             <div className="flex flex-wrap gap-2 justify-start">
               <span className="px-3 py-1 rounded-xl text-[10px] font-black border bg-blue-50 text-blue-600 border-blue-100">Best: {bestWeight}kg</span>
-              {exercise.tempo && <span className="px-3 py-1 rounded-xl text-[10px] font-black border bg-slate-900 text-emerald-400 border-slate-800">Tempo: {exercise.tempo}</span>}
+              {exercise.tempo&&<span className="px-3 py-1 rounded-xl text-[10px] font-black border bg-slate-900 text-emerald-400 border-slate-800">Tempo: {exercise.tempo}</span>}
               <span className="px-3 py-1 rounded-xl text-[10px] font-black border bg-slate-50 text-slate-500 border-slate-200">Rest: 60-90s</span>
             </div>
-            {exercise.coachNote && (
-              <div className="text-[11px] font-bold px-3 py-2 rounded-xl border-l-4 border-emerald-500 bg-emerald-50 text-slate-600">💬 {exercise.coachNote}</div>
-            )}
+            {exercise.coachNote&&<div className="text-[11px] font-bold px-3 py-2 rounded-xl border-l-4 border-emerald-500 bg-emerald-50 text-slate-600">💬 {exercise.coachNote}</div>}
           </div>
 
-          {/* Sets */}
-          {/* Single set: centered narrow box; multiple: scrollable row */}
           {isSingle ? (
             <div className="flex justify-center">
-              <div className={`w-28 border-[2.5px] rounded-[1.8rem] p-4 flex flex-col items-center shadow-md transition-all ${saved ? 'border-emerald-500 shadow-emerald-50 bg-white' : 'border-slate-200 bg-slate-50'}`}>
+              <div className={`w-28 border-[2.5px] rounded-[1.8rem] p-4 flex flex-col items-center shadow-md ${saved?'border-emerald-500 bg-white':'border-slate-200 bg-slate-50'}`}>
                 <span className="text-[9px] mb-2 font-black uppercase tracking-widest text-slate-400">S1</span>
-                {/* Weight on top */}
                 <input type="number" inputMode="decimal" value={sets[0].weight}
-                  onChange={e => { setSets([{ ...sets[0], weight: e.target.value }]); setIsSaved(false); }}
-                  className="w-full text-center font-black text-xl outline-none bg-transparent text-slate-900" placeholder="0" />
+                  onChange={e=>{setSets([{...sets[0],weight:e.target.value}]);setIsSaved(false);}}
+                  className="w-full text-center font-black text-xl outline-none bg-transparent text-slate-900" placeholder="0"/>
                 <span className="text-[8px] font-black text-slate-400 mb-1">KG</span>
-                <div className="w-6 border-t border-slate-200 my-1" />
+                <div className="w-6 border-t border-slate-200 my-1"/>
                 <input type="text" value={sets[0].reps}
-                  onChange={e => { setSets([{ ...sets[0], reps: e.target.value }]); setIsSaved(false); }}
-                  className="w-full text-center font-bold text-sm outline-none bg-transparent text-slate-500" />
+                  onChange={e=>{setSets([{...sets[0],reps:e.target.value}]);setIsSaved(false);}}
+                  className="w-full text-center font-bold text-sm outline-none bg-transparent text-slate-500"/>
                 <span className="text-[9px] font-black text-slate-500">RPS</span>
               </div>
             </div>
           ) : (
             <div className="flex flex-row gap-3 overflow-x-auto pb-1 hide-scrollbar">
-              {sets.map((s, i) => (
-                <div key={i} className={`min-w-[88px] border-[2.5px] rounded-[1.8rem] p-4 flex flex-col items-center shadow-md transition-all ${saved ? 'border-emerald-500 shadow-emerald-50 bg-white' : 'border-slate-200 bg-slate-50'}`}>
+              {sets.map((s,i)=>(
+                <div key={i} className={`min-w-[88px] border-[2.5px] rounded-[1.8rem] p-4 flex flex-col items-center shadow-md transition-all ${saved?'border-emerald-500 bg-white':'border-slate-200 bg-slate-50'}`}>
                   <span className="text-[9px] mb-2 font-black uppercase tracking-widest text-slate-400">S{i+1}</span>
                   <input type="number" inputMode="decimal" value={s.weight}
-                    onChange={e => { const n=[...sets]; n[i]={...n[i],weight:e.target.value}; setSets(n); setIsSaved(false); }}
-                    className="w-full text-center font-black text-xl outline-none bg-transparent text-slate-900" placeholder="0" />
+                    onChange={e=>{const n=[...sets];n[i]={...n[i],weight:e.target.value};setSets(n);setIsSaved(false);}}
+                    className="w-full text-center font-black text-xl outline-none bg-transparent text-slate-900" placeholder="0"/>
                   <span className="text-[8px] font-black text-slate-400 mb-1">KG</span>
-                  <div className="w-6 border-t border-slate-200 my-1" />
+                  <div className="w-6 border-t border-slate-200 my-1"/>
                   <input type="text" value={s.reps}
-                    onChange={e => { const n=[...sets]; n[i]={...n[i],reps:e.target.value}; setSets(n); setIsSaved(false); }}
-                    className="w-full text-center font-bold text-sm outline-none bg-transparent text-slate-500" />
+                    onChange={e=>{const n=[...sets];n[i]={...n[i],reps:e.target.value};setSets(n);setIsSaved(false);}}
+                    className="w-full text-center font-bold text-sm outline-none bg-transparent text-slate-500"/>
                   <span className="text-[9px] font-black text-slate-500">RPS</span>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Buttons */}
           <div className="flex gap-3">
-            <button onClick={() => !isSaved && setIsSkipped(p => !p)}
-              className={`w-24 py-4 rounded-[1.5rem] font-black text-xs uppercase border-2 transition-all ${isSkipped ? 'bg-red-500 text-white border-red-500' : 'border-slate-300 text-slate-500 bg-slate-50 hover:border-red-300 hover:text-red-400'}`}>Skip</button>
+            <button onClick={()=>!isSaved&&setIsSkipped(p=>!p)}
+              className={`w-24 py-4 rounded-[1.5rem] font-black text-xs uppercase border-2 transition-all ${isSkipped?'bg-red-500 text-white border-red-500':'border-slate-300 text-slate-500 bg-slate-50 hover:border-red-300 hover:text-red-400'}`}>Skip</button>
             <button onClick={handleSave} disabled={isSkipped}
-              className={`flex-1 py-4 rounded-[1.5rem] font-black text-sm uppercase tracking-widest shadow-lg transition-all active:scale-95 ${saved ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-slate-900 text-emerald-400'}`}>
-              {saved ? '✓ Saved' : 'Save'}
+              className={`flex-1 py-4 rounded-[1.5rem] font-black text-sm uppercase tracking-widest shadow-lg transition-all active:scale-95 ${saved?'bg-emerald-500 text-white shadow-emerald-200':'bg-slate-900 text-emerald-400'}`}>
+              {saved?'✓ Saved':'Save'}
             </button>
           </div>
         </div>
@@ -545,13 +663,13 @@ function ExerciseRow({ exercise, db, appId, identifier, allLogs, sessionFinished
 // ══════════════════════════════════════════════════════════════════════════════
 // TrainerDashboard
 // ══════════════════════════════════════════════════════════════════════════════
-function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
+function TrainerDashboard({ workouts, logs, db, appId, clientNames, onNavigateToPlan }) {
   const [activeTab, setActiveTab]         = useState('clients');
   const [targetClient, setTargetClient]   = useState('');
   const [sessionName, setSessionName]     = useState('');
   const [libraryData, setLibraryData]     = useState([]);
   const [inboxNotes, setInboxNotes]       = useState([]);
-  const [newEx, setNewEx]                 = useState({ name:'', category:'RESISTANCE', sets:'3', reps:'10', tempo:'', coachNote:'' });
+  const [newEx, setNewEx]                 = useState({name:'',category:'RESISTANCE',sets:'3',reps:'10',tempo:'',coachNote:''});
   const [libName, setLibName]             = useState('');
   const [libCat, setLibCat]               = useState('RESISTANCE');
   const [libGif, setLibGif]               = useState('');
@@ -559,137 +677,144 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
   const [showAddClient, setShowAddClient] = useState(false);
   const [profileClient, setProfileClient] = useState(null);
   const [editClient, setEditClient]       = useState(null);
+  const [planClient, setPlanClient]       = useState(null);
   const [showAI, setShowAI]               = useState(false);
   const [expandedDate, setExpandedDate]   = useState(null);
   const [libFilter, setLibFilter]         = useState('ALL');
   const [libSearch, setLibSearch]         = useState('');
   const [showTemplate, setShowTemplate]   = useState(false);
 
+  // Expose tab switcher to parent
   useEffect(() => {
-    const u1 = onSnapshot(collection(db,'artifacts',appId,'public','data','library'), s =>
+    if (onNavigateToPlan?.phone) {
+      setTargetClient(onNavigateToPlan.phone);
+      setActiveTab('plan');
+    }
+  }, [onNavigateToPlan]);
+
+  useEffect(()=>{
+    const u1=onSnapshot(collection(db,'artifacts',appId,'public','data','library'),s=>
       setLibraryData(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'')))
     );
-    const u2 = onSnapshot(query(collection(db,'artifacts',appId,'public','data','user_notes'),orderBy('timestamp','desc')), s =>
+    const u2=onSnapshot(query(collection(db,'artifacts',appId,'public','data','user_notes'),orderBy('timestamp','desc')),s=>
       setInboxNotes(s.docs.map(d=>({id:d.id,...d.data()})))
     );
-    return () => { u1(); u2(); };
-  }, [db, appId]);
+    return()=>{u1();u2();};
+  },[db,appId]);
 
-  const handleCSV = e => {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async ev => {
-      const lines = ev.target.result.split('\n').map(l=>l.trim()).filter(Boolean);
-      for (const line of lines) {
-        const [name, category='RESISTANCE'] = line.split(',');
-        if (name) await addDoc(collection(db,'artifacts',appId,'public','data','library'),{name:name.trim(),category:category.trim()});
-      }
+  const handleCSV=e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=async ev=>{
+      const lines=ev.target.result.split('\n').map(l=>l.trim()).filter(Boolean);
+      for(const line of lines){const[name,category='RESISTANCE']=line.split(',');if(name)await addDoc(collection(db,'artifacts',appId,'public','data','library'),{name:name.trim(),category:category.trim()});}
       alert(`Imported ${lines.length} exercises ✅`);
     };
-    reader.readAsText(file);
-    e.target.value = '';
+    reader.readAsText(file);e.target.value='';
   };
 
-  const radarData = useMemo(() => {
-    const registeredPhones = Object.keys(clientNames);
-    const logPhones = [...new Set(logs.map(l=>l.clientName))].filter(p=>!registeredPhones.includes(p));
-    const allPhones = [...registeredPhones, ...logPhones].filter(p => /^[\d\+]{7,15}$/.test(p) || !!clientNames[p]?.name);
-    return [...new Set(allPhones)].map(p => {
-      const uLogs     = logs.filter(l=>l.clientName===p).sort((a,b)=>b.completedAt?.toDate()-a.completedAt?.toDate());
-      const diff      = uLogs[0] ? Math.floor((new Date()-uLogs[0].completedAt.toDate())/86400000) : 999;
-      const todayLogs = logs.filter(l=>l.clientName===p&&l.completedAt?.toDate().toDateString()===new Date().toDateString());
-      const total     = workouts.filter(w=>w.assignedTo===p).length;
-      const pct       = total>0 ? Math.round((todayLogs.length/total)*100) : 0;
-      const clientObj = clientNames[p];
-      const name      = typeof clientObj==='object' ? clientObj?.name||p : clientObj||p;
-      return { phone:p, name, diff, pct };
+  const radarData=useMemo(()=>{
+    const reg=Object.keys(clientNames);
+    const logP=[...new Set(logs.map(l=>l.clientName))].filter(p=>!reg.includes(p));
+    const all=[...reg,...logP].filter(p=>/^[\d\+]{7,15}$/.test(p)||!!clientNames[p]?.name);
+    return[...new Set(all)].map(p=>{
+      const uLogs=logs.filter(l=>l.clientName===p).sort((a,b)=>b.completedAt?.toDate()-a.completedAt?.toDate());
+      const diff=uLogs[0]?Math.floor((new Date()-uLogs[0].completedAt.toDate())/86400000):999;
+      const todayLogs=logs.filter(l=>l.clientName===p&&l.completedAt?.toDate().toDateString()===new Date().toDateString());
+      const total=workouts.filter(w=>w.assignedTo===p).length;
+      const pct=total>0?Math.round((todayLogs.length/total)*100):0;
+      const obj=clientNames[p];
+      const name=typeof obj==='object'?obj?.name||p:obj||p;
+      return{phone:p,name,diff,pct};
     }).sort((a,b)=>a.diff-b.diff);
-  }, [logs, clientNames, workouts]);
+  },[logs,clientNames,workouts]);
 
-  const archiveGroups = useMemo(() => {
-    const groups = {};
-    logs.filter(l=>l.clientName===targetClient).forEach(log => {
-      const d = log.completedAt?.toDate().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})||'Pending';
-      if (!groups[d]) groups[d] = [];
+  const archiveGroups=useMemo(()=>{
+    const groups={};
+    logs.filter(l=>l.clientName===targetClient).forEach(log=>{
+      const d=log.completedAt?.toDate().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})||'Pending';
+      if(!groups[d])groups[d]=[];
       groups[d].push(log);
     });
     return Object.entries(groups).sort((a,b)=>new Date(b[0])-new Date(a[0]));
-  }, [logs, targetClient]);
+  },[logs,targetClient]);
 
-  // Analytics: PR progression per exercise for selected client
-  const prChartData = useMemo(() => {
-    const clientLogs = logs.filter(l => l.clientName === analyticsClient && l.isPR);
-    // Group PRs by exercise name, track over time
-    const exerciseMap = {};
-    clientLogs.forEach(l => {
-      const name = formatName(l.exerciseName || '');
-      if (!exerciseMap[name]) exerciseMap[name] = [];
-      const maxW = Math.max(...(l.setsData?.map(s=>parseFloat(s.weight)||0)||[0]));
-      exerciseMap[name].push({
-        date: l.completedAt?.toDate().toLocaleDateString('en-US',{month:'short',day:'numeric'}),
+  // Analytics: muscle group progression
+  const muscleChartData = useMemo(()=>{
+    const clientLogs = logs.filter(l=>l.clientName===analyticsClient);
+    const muscleMap  = {};
+    clientLogs.forEach(log=>{
+      const muscle = getMuscleGroup(log.exerciseName||'');
+      if(!muscle) return;
+      const maxW = Math.max(...(log.setsData?.map(s=>parseFloat(s.weight)||0)||[0]));
+      if(!muscleMap[muscle]) muscleMap[muscle]=[];
+      muscleMap[muscle].push({
+        date: log.completedAt?.toDate().toLocaleDateString('en-US',{month:'short',day:'numeric'}),
         weight: maxW,
-        ts: l.completedAt?.toDate().getTime() || 0
+        ts: log.completedAt?.toDate().getTime()||0
       });
     });
-    // Build unified timeline
-    const allDates = [...new Set(
-      Object.values(exerciseMap).flatMap(arr => arr.map(e=>e.date))
-    )].sort();
-    const topExercises = Object.entries(exerciseMap)
-      .sort((a,b)=>b[1].length-a[1].length)
-      .slice(0,4)
-      .map(([k])=>k);
-    return {
-      data: allDates.map(date => {
-        const point = { date };
-        topExercises.forEach(ex => {
-          const entry = exerciseMap[ex]?.find(e=>e.date===date);
-          if (entry) point[ex] = entry.weight;
-        });
-        return point;
-      }),
-      exercises: topExercises
-    };
-  }, [logs, analyticsClient]);
+    // Get all unique dates sorted
+    const allDates=[...new Set(Object.values(muscleMap).flatMap(arr=>arr.map(e=>e.date)))].sort((a,b)=>{
+      const aTs=Object.values(muscleMap).flatMap(arr=>arr).find(e=>e.date===a)?.ts||0;
+      const bTs=Object.values(muscleMap).flatMap(arr=>arr).find(e=>e.date===b)?.ts||0;
+      return aTs-bTs;
+    });
+    // Top muscles by session count
+    const topMuscles=Object.entries(muscleMap).sort((a,b)=>b[1].length-a[1].length).slice(0,5).map(([k])=>k);
+    // For each date, get max weight per muscle
+    const data=allDates.map(date=>{
+      const point={date};
+      topMuscles.forEach(m=>{
+        const entries=muscleMap[m]?.filter(e=>e.date===date);
+        if(entries?.length) point[m]=Math.max(...entries.map(e=>e.weight));
+      });
+      return point;
+    });
+    return{data,muscles:topMuscles};
+  },[logs,analyticsClient]);
 
-  const CHART_COLORS = ['#10b981','#3b82f6','#f59e0b','#ef4444'];
+  const filteredLibrary=useMemo(()=>
+    libraryData.filter(ex=>{
+      const matchCat=libFilter==='ALL'||ex.category===libFilter;
+      const matchQ=!libSearch||ex.name.toLowerCase().includes(libSearch.toLowerCase());
+      return matchCat&&matchQ;
+    }),[libraryData,libFilter,libSearch]);
 
-  const filteredLibrary = useMemo(() =>
-    libraryData.filter(ex => {
-      const matchCat = libFilter==='ALL'||ex.category===libFilter;
-      const matchQ   = !libSearch||ex.name.toLowerCase().includes(libSearch.toLowerCase());
-      return matchCat && matchQ;
-    }), [libraryData, libFilter, libSearch]);
+  // Client days for Plan tab
+  const clientDays=useMemo(()=>[...new Set(workouts.filter(w=>w.assignedTo===targetClient).map(w=>w.day))].filter(Boolean).sort(),[workouts,targetClient]);
 
-  const bg   = 'bg-white border-slate-200';
-  const tx   = 'text-slate-900';
-  const sub  = 'text-slate-500';
-  const inp  = 'bg-slate-50 border-slate-200 text-slate-900';
-  const rowbg= 'bg-slate-50 border-slate-100';
+  const bg   ='bg-white border-slate-200';
+  const tx   ='text-slate-900';
+  const sub  ='text-slate-500';
+  const inp  ='bg-slate-50 border-slate-200 text-slate-900';
+  const rowbg='bg-slate-50 border-slate-100';
 
-  const tabs = [
-    {id:'clients', label:'Clients 👥'},
-    {id:'plan',    label:'Plan 🛠'},
-    {id:'library', label:'Library 📚'},
+  const tabs=[
+    {id:'clients',label:'Clients 👥'},
+    {id:'plan',   label:'Plan 🛠'},
+    {id:'library',label:'Library 📚'},
     {id:'analytics',label:'Analytics 📊'},
-    {id:'inbox',   label:'Inbox 📩'},
+    {id:'inbox',  label:'Inbox 📩'},
   ];
 
-  return (
+  return(
     <div className="space-y-5 font-black">
-      {showAddClient  && <AddClientModal onClose={()=>setShowAddClient(false)} db={db} appId={appId} />}
-      {profileClient && !editClient && (
-        <ClientProfileModal client={profileClient} onClose={()=>setProfileClient(null)} onEdit={()=>setEditClient(profileClient)} />
-      )}
-      {editClient && (
-        <EditClientModal client={editClient} onClose={()=>{setEditClient(null);setProfileClient(null);}} db={db} appId={appId} />
-      )}
-      {showAI       && <AIAssistant onClose={()=>setShowAI(false)} clientData={radarData} />}
-      {showTemplate && (
-        <DayTemplateModal
-          onClose={()=>setShowTemplate(false)} db={db} appId={appId}
-          libraryData={libraryData} targetClient={targetClient} sessionName={sessionName}
+      {showAddClient&&<AddClientModal onClose={()=>setShowAddClient(false)} db={db} appId={appId}/>}
+      {profileClient&&!editClient&&!planClient&&(
+        <ClientProfileModal
+          client={profileClient}
+          onClose={()=>setProfileClient(null)}
+          onEdit={()=>setEditClient(profileClient)}
+          onViewPlan={()=>{setPlanClient(profileClient);setProfileClient(null);}}
         />
+      )}
+      {editClient&&<EditClientModal client={editClient} onClose={()=>{setEditClient(null);setProfileClient(null);}} db={db} appId={appId}/>}
+      {planClient&&<ClientPlanModal client={planClient} workouts={workouts} onClose={()=>setPlanClient(null)}/>}
+      {showAI&&<AIAssistant onClose={()=>setShowAI(false)} clientData={radarData}/>}
+      {showTemplate&&(
+        <DayTemplateModal onClose={()=>setShowTemplate(false)} db={db} appId={appId}
+          libraryData={libraryData} targetClient={targetClient} sessionName={sessionName}/>
       )}
 
       {/* Tab Bar */}
@@ -704,7 +829,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
       </div>
 
       {/* ── CLIENTS ── */}
-      {activeTab==='clients' && (
+      {activeTab==='clients'&&(
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div onClick={()=>setShowAddClient(true)} className={`${bg} border-2 border-dashed p-5 rounded-[2.5rem] flex items-center justify-center cursor-pointer hover:border-emerald-500 transition-all group min-h-[100px]`}>
             <div className="flex flex-col items-center gap-2">
@@ -738,39 +863,54 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
       )}
 
       {/* ── PLAN ── */}
-      {activeTab==='plan' && (
+      {activeTab==='plan'&&(
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl space-y-3`}>
             <h4 className={`font-black text-base border-b pb-3 ${tx} border-slate-200`}>Assign Session</h4>
-            <input type="text" placeholder="Phone Number" value={targetClient} onChange={e=>setTargetClient(e.target.value)}
-              className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
+
+            {/* Client Selector — dropdown by name */}
+            <ClientSelector clientNames={clientNames} value={targetClient} onChange={phone=>{setTargetClient(phone);setSessionName('');}} placeholder="Select Client..." />
+
+            {/* Show client info if selected */}
+            {targetClient&&clientNames[targetClient]&&(
+              <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
+                <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white font-black text-sm">
+                  {titleCase(clientNames[targetClient]?.name||'')[0]}
+                </div>
+                <div className="text-left">
+                  <p className="font-black text-sm text-slate-900">{titleCase(clientNames[targetClient]?.name||targetClient)}</p>
+                  <p className="text-[10px] text-slate-500">{targetClient}</p>
+                </div>
+                {clientDays.length>0&&(
+                  <div className="ml-auto flex gap-1 flex-wrap justify-end">
+                    {clientDays.map((d,i)=>(
+                      <button key={d} onClick={()=>setSessionName(d)}
+                        className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${sessionName===d?'bg-slate-900 text-emerald-400':'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                        Day {i+1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <input type="text" placeholder="Day (e.g. Day 1)" value={sessionName} onChange={e=>setSessionName(e.target.value)}
               className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
             <SearchableDropdown options={libraryData} value={newEx.name} onChange={v=>setNewEx({...newEx,name:v})}/>
             <div className="grid grid-cols-2 gap-3">
-              <input type="number" placeholder="Sets" value={newEx.sets} onChange={e=>setNewEx({...newEx,sets:e.target.value})}
-                className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
-              <input type="text" placeholder="Reps" value={newEx.reps} onChange={e=>setNewEx({...newEx,reps:e.target.value})}
-                className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
+              <input type="number" placeholder="Sets" value={newEx.sets} onChange={e=>setNewEx({...newEx,sets:e.target.value})} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
+              <input type="text" placeholder="Reps" value={newEx.reps} onChange={e=>setNewEx({...newEx,reps:e.target.value})} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
             </div>
-            <input type="text" placeholder="Tempo (e.g. 2-0-2-0)" value={newEx.tempo} onChange={e=>setNewEx({...newEx,tempo:e.target.value})}
-              className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
-            <input type="text" placeholder="Coach Note (optional)" value={newEx.coachNote} onChange={e=>setNewEx({...newEx,coachNote:e.target.value})}
-              className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
+            <input type="text" placeholder="Tempo (e.g. 2-0-2-0)" value={newEx.tempo} onChange={e=>setNewEx({...newEx,tempo:e.target.value})} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
+            <input type="text" placeholder="Coach Note (optional)" value={newEx.coachNote} onChange={e=>setNewEx({...newEx,coachNote:e.target.value})} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
             <button onClick={async()=>{
               if(!targetClient||!newEx.name)return;
               const libEx=libraryData.find(l=>l.name===newEx.name);
               await addDoc(collection(db,'artifacts',appId,'public','data','workouts'),{...newEx,gifUrl:libEx?.gifUrl||'',assignedTo:targetClient,day:sessionName,orderIndex:Date.now()});
               setNewEx({name:'',category:'RESISTANCE',sets:'3',reps:'10',tempo:'',coachNote:''});
               alert('Assigned ✅');
-            }} className="w-full bg-slate-900 text-emerald-400 py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all">
-              Assign Workout +
-            </button>
-            {/* Assign Full Day Template button */}
-            <button onClick={()=>setShowTemplate(true)}
-              className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all border-b-4 border-emerald-700 active:border-b-0">
-              📋 Assign Full Day Template
-            </button>
+            }} className="w-full bg-slate-900 text-emerald-400 py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all">Assign Workout +</button>
+            <button onClick={()=>setShowTemplate(true)} className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all border-b-4 border-emerald-700 active:border-b-0">📋 Assign Full Day Template</button>
           </div>
 
           <div className="space-y-5">
@@ -780,24 +920,17 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                 {workouts.filter(w=>w.assignedTo===targetClient&&w.day===sessionName).sort((a,b)=>a.orderIndex-b.orderIndex).map((ex,idx,arr)=>(
                   <div key={ex.id} className={`flex items-center p-3 rounded-2xl border-2 gap-3 ${rowbg}`}>
                     <div className="flex flex-col gap-1 shrink-0">
-                      <button disabled={idx===0} onClick={async()=>{
-                        const prev=arr[idx-1]; const tmp=ex.orderIndex;
-                        await updateDoc(doc(db,'artifacts',appId,'public','data','workouts',ex.id),{orderIndex:prev.orderIndex});
-                        await updateDoc(doc(db,'artifacts',appId,'public','data','workouts',prev.id),{orderIndex:tmp});
-                      }} className={`text-xs font-black px-2 py-1 rounded-lg transition-all ${idx===0?'opacity-20 cursor-not-allowed':'bg-slate-200 hover:bg-emerald-500 hover:text-white'}`}>▲ Up</button>
-                      <button disabled={idx===arr.length-1} onClick={async()=>{
-                        const next=arr[idx+1]; const tmp=ex.orderIndex;
-                        await updateDoc(doc(db,'artifacts',appId,'public','data','workouts',ex.id),{orderIndex:next.orderIndex});
-                        await updateDoc(doc(db,'artifacts',appId,'public','data','workouts',next.id),{orderIndex:tmp});
-                      }} className={`text-xs font-black px-2 py-1 rounded-lg transition-all ${idx===arr.length-1?'opacity-20 cursor-not-allowed':'bg-slate-200 hover:bg-emerald-500 hover:text-white'}`}>▼ Dn</button>
+                      <button disabled={idx===0} onClick={async()=>{const prev=arr[idx-1];const tmp=ex.orderIndex;await updateDoc(doc(db,'artifacts',appId,'public','data','workouts',ex.id),{orderIndex:prev.orderIndex});await updateDoc(doc(db,'artifacts',appId,'public','data','workouts',prev.id),{orderIndex:tmp});}}
+                        className={`text-xs font-black px-2 py-1 rounded-lg transition-all ${idx===0?'opacity-20 cursor-not-allowed':'bg-slate-200 hover:bg-emerald-500 hover:text-white'}`}>▲ Up</button>
+                      <button disabled={idx===arr.length-1} onClick={async()=>{const next=arr[idx+1];const tmp=ex.orderIndex;await updateDoc(doc(db,'artifacts',appId,'public','data','workouts',ex.id),{orderIndex:next.orderIndex});await updateDoc(doc(db,'artifacts',appId,'public','data','workouts',next.id),{orderIndex:tmp});}}
+                        className={`text-xs font-black px-2 py-1 rounded-lg transition-all ${idx===arr.length-1?'opacity-20 cursor-not-allowed':'bg-slate-200 hover:bg-emerald-500 hover:text-white'}`}>▼ Dn</button>
                     </div>
                     <div className="flex-1 text-left">
                       <span className={`font-black text-sm capitalize ${tx}`}>{formatName(ex.name)}</span>
                       <p className={`text-[10px] font-bold ${sub}`}>{ex.sets} sets × {ex.reps} reps{ex.tempo?` · ${ex.tempo}`:''}</p>
                       {ex.coachNote&&<p className="text-[10px] text-emerald-500 font-bold">💬 {ex.coachNote}</p>}
                     </div>
-                    <button onClick={()=>deleteDoc(doc(db,'artifacts',appId,'public','data','workouts',ex.id))}
-                      className="text-red-400 font-black text-[10px] bg-red-50 px-3 py-1.5 rounded-xl hover:bg-red-500 hover:text-white transition-all shrink-0">Del</button>
+                    <button onClick={()=>deleteDoc(doc(db,'artifacts',appId,'public','data','workouts',ex.id))} className="text-red-400 font-black text-[10px] bg-red-50 px-3 py-1.5 rounded-xl hover:bg-red-500 hover:text-white transition-all shrink-0">Del</button>
                   </div>
                 ))}
               </div>
@@ -806,18 +939,17 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
             <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl flex flex-col h-[350px]`}>
               <h3 className="font-black text-sm border-b pb-3 mb-3 text-left uppercase text-emerald-500 border-slate-200">Performance Archive</h3>
               {!targetClient
-                ? <p className={`text-xs font-black ${sub} text-center mt-8`}>Enter a phone number above to view history</p>
-                : <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
+                ?<p className={`text-xs font-black ${sub} text-center mt-8`}>Select a client above to view history</p>
+                :<div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
                   {archiveGroups.length===0
-                    ? <p className={`text-xs font-black ${sub} text-center mt-8`}>No records yet</p>
-                    : archiveGroups.map(([date,entries])=>(
+                    ?<p className={`text-xs font-black ${sub} text-center mt-8`}>No records yet</p>
+                    :archiveGroups.map(([date,entries])=>(
                       <div key={date}>
-                        <button onClick={()=>setExpandedDate(expandedDate===date?null:date)}
-                          className={`w-full flex justify-between items-center p-3 rounded-xl font-black text-xs hover:bg-emerald-50 transition-all ${rowbg}`}>
+                        <button onClick={()=>setExpandedDate(expandedDate===date?null:date)} className={`w-full flex justify-between items-center p-3 rounded-xl font-black text-xs hover:bg-emerald-50 transition-all ${rowbg}`}>
                           <span className="font-black text-xs text-slate-600">{entries.length} exercises</span>
                           <span className="font-black text-xs text-emerald-600">{date}</span>
                         </button>
-                        {expandedDate===date && (
+                        {expandedDate===date&&(
                           <div className="mt-2 space-y-2 pl-3 border-l-4 border-emerald-200">
                             {entries.map(e=>(
                               <div key={e.id} className="p-3 rounded-xl text-left bg-white border border-slate-100">
@@ -841,20 +973,15 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
       )}
 
       {/* ── LIBRARY ── */}
-      {activeTab==='library' && (
+      {activeTab==='library'&&(
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl space-y-3`}>
             <h4 className={`font-black text-base border-b pb-3 ${tx} border-slate-200`}>New Master Exercise</h4>
             <input type="text" placeholder="Exercise Name" value={libName} onChange={e=>setLibName(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`}/>
-            <select value={libCat} onChange={e=>setLibCat(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}>
-              {CATEGORIES.map(c=><option key={c}>{c}</option>)}
-            </select>
+            <select value={libCat} onChange={e=>setLibCat(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm ${inp}`}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
             <input type="text" placeholder="GIF / Image URL (optional)" value={libGif} onChange={e=>setLibGif(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`}/>
-            <button onClick={async()=>{
-              if(!libName)return;
-              await addDoc(collection(db,'artifacts',appId,'public','data','library'),{name:libName,category:libCat,gifUrl:libGif});
-              setLibName('');setLibGif('');alert('Added ✅');
-            }} className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">Add To Library</button>
+            <button onClick={async()=>{if(!libName)return;await addDoc(collection(db,'artifacts',appId,'public','data','library'),{name:libName,category:libCat,gifUrl:libGif});setLibName('');setLibGif('');alert('Added ✅');}}
+              className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">Add To Library</button>
             <div className="border-2 border-dashed rounded-2xl p-4 text-center border-slate-200">
               <p className="text-[10px] font-black mb-2 text-slate-500">Import CSV (name, category)</p>
               <label className="bg-slate-900 text-emerald-400 px-5 py-2.5 rounded-xl font-black text-xs uppercase cursor-pointer hover:bg-slate-700 transition-all inline-block">
@@ -888,15 +1015,14 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
         </div>
       )}
 
-      {/* ── ANALYTICS — PR Progression ── */}
-      {activeTab==='analytics' && (
+      {/* ── ANALYTICS — Muscle Group Progression ── */}
+      {activeTab==='analytics'&&(
         <div className="space-y-5">
           <div className="grid grid-cols-3 gap-3">
             {[
-              {label:'Sessions', val:logs.filter(l=>l.clientName===analyticsClient).length, c:tx},
-              {label:'PRs 🏆',   val:logs.filter(l=>l.clientName===analyticsClient&&l.isPR).length, c:'text-emerald-500'},
-              {label:'Avg Sets', val:logs.filter(l=>l.clientName===analyticsClient).length>0
-                ?Math.round(logs.filter(l=>l.clientName===analyticsClient).reduce((a,l)=>a+(l.setsData?.length||0),0)/logs.filter(l=>l.clientName===analyticsClient).length):0, c:'text-blue-500'}
+              {label:'Sessions',val:logs.filter(l=>l.clientName===analyticsClient).length,c:tx},
+              {label:'PRs 🏆',val:logs.filter(l=>l.clientName===analyticsClient&&l.isPR).length,c:'text-emerald-500'},
+              {label:'Avg Sets',val:logs.filter(l=>l.clientName===analyticsClient).length>0?Math.round(logs.filter(l=>l.clientName===analyticsClient).reduce((a,l)=>a+(l.setsData?.length||0),0)/logs.filter(l=>l.clientName===analyticsClient).length):0,c:'text-blue-500'}
             ].map((s,i)=>(
               <div key={i} className={`${bg} border-2 p-4 rounded-[2rem] shadow-lg text-center`}>
                 <span className={`text-[10px] font-black block mb-1 ${sub}`}>{s.label}</span>
@@ -905,44 +1031,43 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
             ))}
           </div>
           <div className={`${bg} border-2 p-5 rounded-[2.5rem] shadow-xl`}>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-2">
               <div>
-                <h4 className={`font-black text-base ${tx}`}>PR Progression</h4>
-                <p className={`text-[10px] font-black ${sub}`}>Top exercises by personal records</p>
+                <h4 className={`font-black text-base ${tx}`}>Muscle Group Progression</h4>
+                <p className={`text-[10px] font-black ${sub}`}>Max weight per muscle over time</p>
               </div>
-              <select value={analyticsClient} onChange={e=>setAnalyticsClient(e.target.value)} className={`p-2 border-2 rounded-xl font-black text-xs ${inp}`}>
-                <option value="">Select Client</option>
-                {Object.entries(clientNames).map(([p,v])=>(<option key={p} value={p}>{typeof v==='object'?v.name||p:v||p}</option>))}
-              </select>
+              <ClientSelector clientNames={clientNames} value={analyticsClient} onChange={setAnalyticsClient} placeholder="Select Client"/>
             </div>
-            {analyticsClient && prChartData.exercises.length > 0 ? (
-              <>
-                <div className="h-56">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={prChartData.data}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
-                      <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false}/>
-                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} unit="kg"/>
-                      <Tooltip contentStyle={{borderRadius:'16px',border:'none',boxShadow:'0 10px 25px -5px rgba(0,0,0,0.1)',background:'#fff'}} formatter={(v,n)=>[`${v}kg`,n]}/>
-                      <Legend wrapperStyle={{fontSize:'10px',fontWeight:'900'}}/>
-                      {prChartData.exercises.map((ex,i)=>(
-                        <Line key={ex} type="monotone" dataKey={ex} stroke={CHART_COLORS[i%4]} strokeWidth={3} dot={{r:5,fill:CHART_COLORS[i%4],strokeWidth:2,stroke:'#fff'}} connectNulls activeDot={{r:7}}/>
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {prChartData.exercises.map((ex,i)=>(
-                    <span key={ex} className="px-3 py-1 rounded-xl text-[10px] font-black" style={{background:CHART_COLORS[i%4]+'20',color:CHART_COLORS[i%4],border:`1px solid ${CHART_COLORS[i%4]}40`}}>
-                      {ex}
-                    </span>
-                  ))}
-                </div>
-              </>
-            ) : (
+            {/* Muscle legend */}
+            {analyticsClient&&muscleChartData.muscles.length>0&&(
+              <div className="flex flex-wrap gap-2 mb-4">
+                {muscleChartData.muscles.map(m=>(
+                  <span key={m} className="px-3 py-1 rounded-xl text-[10px] font-black text-white" style={{background:MUSCLE_COLORS[m]||'#94a3b8'}}>
+                    {m}
+                  </span>
+                ))}
+              </div>
+            )}
+            {analyticsClient&&muscleChartData.muscles.length>0?(
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={muscleChartData.data}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+                    <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false}/>
+                    <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} unit="kg"/>
+                    <Tooltip contentStyle={{borderRadius:'16px',border:'none',boxShadow:'0 10px 25px -5px rgba(0,0,0,0.1)',background:'#fff'}} formatter={(v,n)=>[`${v}kg`,n]}/>
+                    {muscleChartData.muscles.map(m=>(
+                      <Line key={m} type="monotone" dataKey={m} stroke={MUSCLE_COLORS[m]||'#94a3b8'} strokeWidth={3}
+                        dot={{r:5,fill:MUSCLE_COLORS[m]||'#94a3b8',strokeWidth:2,stroke:'#fff'}}
+                        connectNulls activeDot={{r:7}}/>
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ):(
               <div className="h-40 flex items-center justify-center">
                 <p className={`text-sm font-black ${sub} text-center`}>
-                  {analyticsClient ? 'No PR records yet for this client' : 'Select a client to view PR progression'}
+                  {analyticsClient?'No workout data yet for this client':'Select a client to view muscle progression'}
                 </p>
               </div>
             )}
@@ -951,17 +1076,17 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
       )}
 
       {/* ── INBOX ── */}
-      {activeTab==='inbox' && (
+      {activeTab==='inbox'&&(
         <div className="space-y-4 max-w-lg mx-auto">
           {inboxNotes.length===0
-            ? <div className={`text-center py-32 text-3xl font-black uppercase opacity-10 tracking-[0.5em] ${tx}`}>Empty</div>
-            : inboxNotes.map(note=>(
+            ?<div className={`text-center py-32 text-3xl font-black uppercase opacity-30 tracking-[0.5em] ${tx}`}>Empty</div>
+            :inboxNotes.map(note=>(
               <div key={note.id} className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl space-y-4 relative overflow-hidden`}>
                 <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 rounded-r-full"/>
                 <div className="flex justify-between items-center pl-3">
                   <button onClick={()=>deleteDoc(doc(db,'artifacts',appId,'public','data','user_notes',note.id))} className="text-red-400 font-black text-xs uppercase">Archive</button>
                   <span className="bg-slate-900 text-emerald-400 px-3 py-1.5 rounded-full text-[10px] font-black uppercase">
-                    {titleCase(clientNames[note.clientName]?.name || clientNames[note.clientName] || note.clientName)}
+                    {titleCase(clientNames[note.clientName]?.name||clientNames[note.clientName]||note.clientName)}
                   </span>
                 </div>
                 <p className="font-bold text-sm p-4 rounded-2xl border-2 border-dashed leading-relaxed italic pl-5 text-slate-700 bg-slate-50">"{note.note}"</p>
@@ -983,22 +1108,19 @@ function ClientView({ workouts, db, appId, identifier, allLogs }) {
   const [note, setNote]                       = useState('');
   const [sessionFinished, setSessionFinished] = useState(false);
   const [showSummary, setShowSummary]         = useState(false);
-
   const days = useMemo(()=>[...new Set(workouts.map(w=>w.day))].filter(Boolean),[workouts]);
   useEffect(()=>{ if(days.length>0&&!selectedDay) setSelectedDay(days[0]); },[days,selectedDay]);
   useBackButton(showSummary,()=>setShowSummary(false));
-
   const filtered = workouts.filter(w=>w.day===selectedDay).sort((a,b)=>a.orderIndex-b.orderIndex);
-
   const summaryData = useMemo(()=>{
-    const today = new Date().toLocaleDateString('ar-EG');
-    const tl    = allLogs.filter(l=>l.clientName===identifier&&l.completedAt?.toDate().toLocaleDateString('ar-EG')===today);
-    return { count:tl.length, totalSets:tl.reduce((a,l)=>a+(l.setsData?.length||0),0), prs:tl.filter(l=>l.isPR) };
+    const today=new Date().toLocaleDateString('ar-EG');
+    const tl=allLogs.filter(l=>l.clientName===identifier&&l.completedAt?.toDate().toLocaleDateString('ar-EG')===today);
+    return{count:tl.length,totalSets:tl.reduce((a,l)=>a+(l.setsData?.length||0),0),prs:tl.filter(l=>l.isPR)};
   },[allLogs,identifier]);
 
-  return (
+  return(
     <div className="max-w-xl mx-auto p-4 space-y-5 font-black">
-      {showSummary && (
+      {showSummary&&(
         <div className="fixed inset-0 z-[998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
           <div className="bg-white border-2 border-slate-200 rounded-[3rem] p-8 w-full max-w-sm shadow-2xl text-center space-y-5">
             <div className="text-5xl">🎉</div>
@@ -1021,7 +1143,6 @@ function ClientView({ workouts, db, appId, identifier, allLogs }) {
           </div>
         </div>
       )}
-
       <div className="flex gap-3 overflow-x-auto pb-1 hide-scrollbar">
         {days.map((d,i)=>(
           <button key={d} onClick={()=>setSelectedDay(d)}
@@ -1030,14 +1151,12 @@ function ClientView({ workouts, db, appId, identifier, allLogs }) {
           </button>
         ))}
       </div>
-
       <div>
         {filtered.length>0
-          ? filtered.map(ex=><ExerciseRow key={ex.id} exercise={ex} db={db} appId={appId} identifier={identifier} allLogs={allLogs} sessionFinished={sessionFinished}/>)
-          : <div className="py-32 text-center text-2xl font-black uppercase opacity-20 tracking-widest text-slate-900">No Workouts</div>
+          ?filtered.map(ex=><ExerciseRow key={ex.id} exercise={ex} db={db} appId={appId} identifier={identifier} allLogs={allLogs} sessionFinished={sessionFinished}/>)
+          :<div className="py-32 text-center text-2xl font-black uppercase opacity-20 tracking-widest text-slate-900">No Workouts</div>
         }
       </div>
-
       <div className="pt-4 pb-20 space-y-4">
         <div className="flex gap-3">
           <button onClick={()=>{setSessionFinished(true);setShowSummary(true);}}
@@ -1076,6 +1195,7 @@ export default function WorkoutApp() {
   const [isLoading, setIsLoading]   = useState(true);
   const [clientRegistry, setClientRegistry] = useState({});
   const [navVisible, setNavVisible] = useState(true);
+  const [navigateToPlan, setNavigateToPlan] = useState(null);
   const lastY = useRef(0);
 
   useEffect(()=>{
@@ -1104,15 +1224,14 @@ export default function WorkoutApp() {
     return()=>{u1();u2();u3();};
   },[user,authStep]);
 
-  const clientName = clientRegistry[identifier]?.name || identifier;
-
+  const clientName=clientRegistry[identifier]?.name||identifier;
   const doLogin=()=>{
     if(!identifier.trim())return;
     const r=identifier.toLowerCase()===TRAINER_MAIL.toLowerCase()?'trainer':'client';
     localStorage.setItem('gofit_user',identifier);localStorage.setItem('gofit_role',r);setRole(r);setAuthStep('authenticated');
   };
 
-  if(isLoading) return(
+  if(isLoading)return(
     <div className="h-screen flex items-center justify-center bg-slate-950">
       <div className="text-center">
         <p className="text-emerald-400 font-black text-3xl uppercase tracking-[0.3em]">GoFit</p>
@@ -1121,7 +1240,7 @@ export default function WorkoutApp() {
     </div>
   );
 
-  if(authStep==='login') return(
+  if(authStep==='login')return(
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-black">
       <div className="w-full max-w-[320px] rounded-[2.5rem] shadow-2xl overflow-hidden border-[5px] border-slate-800 bg-white">
         <div className="bg-slate-900 py-8 px-6 text-center">
@@ -1155,8 +1274,8 @@ export default function WorkoutApp() {
       </nav>
       <main className="max-w-5xl mx-auto p-4 pt-20 animate-fade-in">
         {role==='trainer'
-          ? <TrainerDashboard workouts={workouts} logs={allLogs} db={db} appId={APP_ID} clientNames={clientRegistry}/>
-          : <ClientView workouts={workouts.filter(w=>w.assignedTo===identifier)} db={db} appId={APP_ID} identifier={identifier} allLogs={allLogs}/>
+          ?<TrainerDashboard workouts={workouts} logs={allLogs} db={db} appId={APP_ID} clientNames={clientRegistry} onNavigateToPlan={navigateToPlan}/>
+          :<ClientView workouts={workouts.filter(w=>w.assignedTo===identifier)} db={db} appId={APP_ID} identifier={identifier} allLogs={allLogs}/>
         }
       </main>
       <style>{`

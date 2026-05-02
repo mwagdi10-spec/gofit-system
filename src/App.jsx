@@ -10,6 +10,79 @@ import {
   Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
+// ─── NASM OPT Model (Correct) ──────────────────────────────────────────────────
+const NASM_OPT_PHASES = {
+  1: {
+    phase: "Stabilization Endurance",
+    level: "Phase 1",
+    description: "Foundation & Stability",
+    duration: "4 weeks",
+    reps: "12-20",
+    intensity: "50-70%",
+    rest: "0-90 seconds",
+    focus: "Core stability & control",
+    order: 1
+  },
+  2: {
+    phase: "Strength Endurance",
+    level: "Phase 2",
+    description: "Build Muscular Endurance",
+    duration: "4-6 weeks",
+    reps: "8-12",
+    intensity: "70-80%",
+    rest: "60-90 seconds",
+    focus: "Building muscular endurance",
+    order: 2
+  },
+  3: {
+    phase: "Muscle Development",
+    level: "Phase 3",
+    description: "Muscle Growth & Hypertrophy",
+    duration: "6 weeks",
+    reps: "6-12",
+    intensity: "75-85%",
+    rest: "60-90 seconds",
+    focus: "Muscle size development",
+    order: 3
+  },
+  4: {
+    phase: "Strength",
+    level: "Phase 4",
+    description: "Maximum Strength",
+    duration: "4-6 weeks",
+    reps: "1-6",
+    intensity: "85-100%",
+    rest: "2-3 minutes",
+    focus: "Maximum strength",
+    order: 4
+  },
+  5: {
+    phase: "Power",
+    level: "Phase 5",
+    description: "Explosive Power",
+    duration: "3-6 weeks",
+    reps: "3-5",
+    intensity: "75-90%",
+    rest: "2-3 minutes",
+    focus: "Explosive power & athletic performance",
+    order: 5
+  }
+};
+
+const PHASE_PROGRESSION = {
+  Beginner: [1, 2, 3, 4, 5],
+  Intermediate: [2, 3, 4, 5, 1],
+  Advanced: [3, 4, 5, 1, 2]
+};
+
+const PHASE_COLORS = {
+  1: '#10b981',
+  2: '#3b82f6',
+  3: '#f59e0b',
+  4: '#ef4444',
+  5: '#8b5cf6'
+};
+
 // ─── Firebase ────────────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyCcjp3dDhgt15x7ttHD3UplfP20e57CpFU",
@@ -91,14 +164,14 @@ function GifPopup({ url, onClose }) {
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/75 backdrop-blur-sm" onClick={onClose}>
       <div className="relative max-w-xs w-full mx-6" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute -top-3 -right-3 z-10 w-8 h-8 bg-white text-slate-900 rounded-full font-black text-sm shadow-2xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all">✕</button>
+        <button onClick={onClose} className="absolute -top-3 -left-3 z-10 w-8 h-8 bg-white text-slate-900 rounded-full font-black text-sm shadow-2xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all">✕</button>
         <img src={url} alt="exercise demo" className="w-full rounded-3xl shadow-2xl" />
       </div>
     </div>
   );
 }
 
-// ─── Searchable Dropdown (مع إضافة جديد) ──────────────────────────────────────
+// ─── Searchable Dropdown ──────────────────────────────────────────────────────
 function SearchableDropdown({ options, value, onChange, placeholder = 'Search exercise...', allowNew = false }) {
   const [q, setQ]       = useState('');
   const [open, setOpen] = useState(false);
@@ -119,7 +192,7 @@ function SearchableDropdown({ options, value, onChange, placeholder = 'Search ex
       {open && (
         <div className="absolute z-50 w-full mt-1 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl overflow-hidden">
           <div className="p-2 border-b border-slate-100">
-            <input autoFocus type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="اكتب للبحث..." className="w-full p-2 bg-slate-50 rounded-xl text-sm font-bold outline-none" />
+            <input autoFocus type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Search..." className="w-full p-2 bg-slate-50 rounded-xl text-sm font-bold outline-none" />
           </div>
           <div className="max-h-48 overflow-y-auto">
             {filtered.length === 0 && q.length === 0
@@ -176,7 +249,7 @@ function ClientSelector({ clientNames, value, onChange, placeholder = 'Select Cl
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ClientProfileViewModal (مع Edit)
+// ClientProfileViewModal
 // ═══════════════════════════════════════════════════════════════════════════════
 function ClientProfileViewModal({ client, onClose, db, appId, onToPlan }) {
   const [editMode, setEditMode] = useState(false);
@@ -193,6 +266,7 @@ function ClientProfileViewModal({ client, onClose, db, appId, onToPlan }) {
         height: formData.height,
         goal: formData.goal,
         level: formData.level,
+        nasm_phase: formData.nasm_phase,
         daysPerWeek: formData.daysPerWeek,
         injuries: formData.injuries,
       });
@@ -226,6 +300,23 @@ function ClientProfileViewModal({ client, onClose, db, appId, onToPlan }) {
               <input type="number" value={formData.height||''} onChange={e=>setFormData({...formData,height:parseInt(e.target.value)||0})} placeholder="Height (cm)" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
               <input type="text" value={formData.goal||''} onChange={e=>setFormData({...formData,goal:e.target.value})} placeholder="Goal" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
               <input type="text" value={formData.level||''} onChange={e=>setFormData({...formData,level:e.target.value})} placeholder="Level" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+              
+              {/* NASM Phase Selection */}
+              <div className="border-l-4 border-emerald-500 pl-3">
+                <label className="text-xs font-black text-emerald-600 uppercase mb-2 block">NASM Phase</label>
+                <select 
+                  value={formData.nasm_phase||1} 
+                  onChange={e=>setFormData({...formData,nasm_phase:parseInt(e.target.value)})} 
+                  className="w-full p-3 border-2 border-emerald-300 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-emerald-50"
+                >
+                  {[1,2,3,4,5].map(p => (
+                    <option key={p} value={p}>
+                      {NASM_OPT_PHASES[p].phase}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <input type="number" value={formData.daysPerWeek||''} onChange={e=>setFormData({...formData,daysPerWeek:parseInt(e.target.value)||0})} placeholder="Days/Week" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
               <input type="text" value={formData.injuries||''} onChange={e=>setFormData({...formData,injuries:e.target.value})} placeholder="Injuries" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
             </>
@@ -238,6 +329,7 @@ function ClientProfileViewModal({ client, onClose, db, appId, onToPlan }) {
                 {label:'Height',val:formData.height?`${formData.height} cm`:'—'},
                 {label:'Goal',val:formData.goal||'—'},
                 {label:'Level',val:formData.level||'—'},
+                {label:'NASM Phase',val:NASM_OPT_PHASES[formData.nasm_phase||1]?.phase||'—'},
                 {label:'Days/Week',val:formData.daysPerWeek?`${formData.daysPerWeek} days`:'—'},
                 {label:'Injuries',val:formData.injuries||'None'},
               ].map(f=>(
@@ -263,7 +355,7 @@ function ClientProfileViewModal({ client, onClose, db, appId, onToPlan }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Edit Exercise Modal (تعديل التصنيف والبيانات)
+// Edit Exercise Modal
 // ═══════════════════════════════════════════════════════════════════════════════
 function EditExerciseModal({ exercise, onClose, db, appId }) {
   const [formData, setFormData] = useState({
@@ -345,7 +437,9 @@ function EditExerciseModal({ exercise, onClose, db, appId }) {
   );
 }
 
-
+// ═══════════════════════════════════════════════════════════════════════════════
+// Add Exercise Modal
+// ═══════════════════════════════════════════════════════════════════════════════
 function AddExerciseModal({ onClose, db, appId }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -432,7 +526,9 @@ function AddExerciseModal({ onClose, db, appId }) {
   );
 }
 
-
+// ═══════════════════════════════════════════════════════════════════════════════
+// Add New Client Modal
+// ═══════════════════════════════════════════════════════════════════════════════
 function AddNewClientModal({ onClose, db, appId }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -442,6 +538,7 @@ function AddNewClientModal({ onClose, db, appId }) {
     height: '',
     goal: '',
     level: '',
+    nasm_phase: 1,
     daysPerWeek: '',
     injuries: ''
   });
@@ -462,6 +559,7 @@ function AddNewClientModal({ onClose, db, appId }) {
         height: formData.height ? parseInt(formData.height) : 0,
         goal: formData.goal || '',
         level: formData.level || '',
+        nasm_phase: formData.nasm_phase || 1,
         daysPerWeek: formData.daysPerWeek ? parseInt(formData.daysPerWeek) : 0,
         injuries: formData.injuries || '',
         createdAt: serverTimestamp()
@@ -497,6 +595,23 @@ function AddNewClientModal({ onClose, db, appId }) {
           <input type="number" value={formData.height} onChange={e=>setFormData({...formData,height:e.target.value})} placeholder="Height (cm)" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
           <input type="text" value={formData.goal} onChange={e=>setFormData({...formData,goal:e.target.value})} placeholder="Goal (e.g Weight Loss)" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
           <input type="text" value={formData.level} onChange={e=>setFormData({...formData,level:e.target.value})} placeholder="Level (e.g Beginner)" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+          
+          {/* NASM Phase Selection for New Client */}
+          <div className="border-l-4 border-emerald-500 pl-3">
+            <label className="text-xs font-black text-emerald-600 uppercase mb-2 block">Initial NASM Phase</label>
+            <select 
+              value={formData.nasm_phase} 
+              onChange={e=>setFormData({...formData,nasm_phase:parseInt(e.target.value)})} 
+              className="w-full p-3 border-2 border-emerald-300 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-emerald-50"
+            >
+              {[1,2,3,4,5].map(p => (
+                <option key={p} value={p}>
+                  {p}. {NASM_OPT_PHASES[p].phase}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <input type="number" value={formData.daysPerWeek} onChange={e=>setFormData({...formData,daysPerWeek:e.target.value})} placeholder="Days/Week" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
           <input type="text" value={formData.injuries} onChange={e=>setFormData({...formData,injuries:e.target.value})} placeholder="Injuries/Notes" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
         </div>
@@ -604,6 +719,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [editingExercise, setEditingExercise] = useState(null);
   const [menuOpen, setMenuOpen]               = useState(false);
+  const [showProgramBuilder, setShowProgramBuilder] = useState(false);
 
   const bg = 'bg-white border-slate-200';
   const tx = 'text-slate-900';
@@ -636,7 +752,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
     const filtered = logs.filter(l=>l.clientName===analyticsClient);
     const grouped = {};
     filtered.forEach(log=>{
-      const d = log.completedAt?.toDate?.().toLocaleDateString('ar-EG')||'Unknown';
+      const d = log.completedAt?.toDate?.().toLocaleDateString('en-US')||'Unknown';
       if(!grouped[d]) grouped[d]=[];
       grouped[d].push(log);
     });
@@ -649,7 +765,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
     const filtered = logs.filter(l=>l.clientName===analyticsClient);
     const byDate = {};
     filtered.forEach(log=>{
-      const d = log.completedAt?.toDate?.().toLocaleDateString('ar-EG')||'?';
+      const d = log.completedAt?.toDate?.().toLocaleDateString('en-US')||'?';
       if(!byDate[d]) byDate[d]={};
       const muscle = getMuscleGroup(log.exerciseName);
       if(!muscle) return;
@@ -703,17 +819,18 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
             <h3 className={`font-black text-base border-b pb-3 mb-3 ${tx} border-slate-200`}>Clients ({Object.keys(clientNames).length})</h3>
             <div className="space-y-3 max-h-80 overflow-y-auto">
               {Object.entries(clientNames).map(([phone,client])=>{
-                const todayLogs = logs.filter(l=>l.clientName===phone&&l.completedAt?.toDate?.().toLocaleDateString('ar-EG')===new Date().toLocaleDateString('ar-EG'));
+                const todayLogs = logs.filter(l=>l.clientName===phone&&l.completedAt?.toDate?.().toLocaleDateString('en-US')===new Date().toLocaleDateString('en-US'));
                 const lastLog = logs.filter(l=>l.clientName===phone).sort((a,b)=>b.completedAt?.toDate?.()-a.completedAt?.toDate?.())[0];
-                const lastDate = lastLog?.completedAt?.toDate?.().toLocaleDateString('ar-EG');
-                const today = new Date().toLocaleDateString('ar-EG');
+                const lastDate = lastLog?.completedAt?.toDate?.().toLocaleDateString('en-US');
+                const today = new Date().toLocaleDateString('en-US');
                 const diff = lastDate===today?0:lastDate?(Math.floor((new Date()-new Date(lastDate))/(1000*60*60*24))):999;
                 const pct = todayLogs.length>0?Math.round((todayLogs.length/(workouts.filter(w=>w.assignedTo===phone).length||1))*100):0;
+                const clientPhase = client.nasm_phase || 1;
                 return(
                   <div key={phone} onClick={()=>setSelectedProfileModal({...client,phone})} className="p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 hover:border-emerald-300 cursor-pointer transition-all hover:shadow-lg">
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white font-black text-base shrink-0">
-                        {titleCase(client.name)[0]}
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black text-base shrink-0" style={{backgroundColor: PHASE_COLORS[clientPhase]}}>
+                        {clientPhase}
                       </div>
                       <div className="flex-1 text-left">
                         <p className={`font-black text-sm ${tx}`}>{titleCase(client.name)}</p>
@@ -722,7 +839,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                       <span className={`text-[10px] uppercase font-black ${sub} shrink-0`}>{diff===0?'Today':diff===999?'Never':`${diff}d ago`}</span>
                     </div>
                     <div className="h-1.5 rounded-full w-full bg-slate-100">
-                      <div className="h-full bg-emerald-500 rounded-full transition-all" style={{width:`${pct}%`}}/>
+                      <div className="h-full rounded-full transition-all" style={{width:`${pct}%`, backgroundColor: PHASE_COLORS[clientPhase]}}/>
                     </div>
                     <span className={`text-[9px] font-black ${sub}`}>today {pct}%</span>
                   </div>
@@ -763,18 +880,21 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
             <button onClick={()=>setShowAddClient(true)} className="bg-emerald-500 text-white px-4 py-2 rounded-2xl font-black text-xs uppercase">+ Add</button>
           </div>
           <div className="space-y-3">
-            {Object.entries(clientNames).map(([phone,client])=>(
-              <div key={phone} className="p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 hover:border-emerald-300 transition-all flex justify-between items-center">
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white font-black text-sm shrink-0">{titleCase(client.name)[0]}</div>
-                  <div className="text-left">
-                    <p className="font-black text-sm text-slate-900">{titleCase(client.name)}</p>
-                    <p className="text-xs text-slate-500">{phone}</p>
+            {Object.entries(clientNames).map(([phone,client])=>{
+              const clientPhase = client.nasm_phase || 1;
+              return (
+                <div key={phone} className="p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 hover:border-emerald-300 transition-all flex justify-between items-center">
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black text-sm shrink-0" style={{backgroundColor: PHASE_COLORS[clientPhase]}}>{clientPhase}</div>
+                    <div className="text-left">
+                      <p className="font-black text-sm text-slate-900">{titleCase(client.name)}</p>
+                      <p className="text-xs text-slate-500">{NASM_OPT_PHASES[clientPhase]?.phase}</p>
+                    </div>
                   </div>
+                  <button onClick={()=>setSelectedProfileModal({...client,phone})} className="bg-slate-900 text-emerald-400 px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-slate-800 transition-all">View</button>
                 </div>
-                <button onClick={()=>setSelectedProfileModal({...client,phone})} className="bg-slate-900 text-emerald-400 px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-slate-800 transition-all">View</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -839,10 +959,10 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
             <ClientSelector clientNames={clientNames} value={targetClient} onChange={phone=>{setTargetClient(phone);setSessionName('');}} placeholder="Select Client..."/>
             {targetClient&&clientNames[targetClient]&&(
               <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
-                <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white font-black text-sm">{titleCase(clientNames[targetClient]?.name||'')[0]}</div>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-sm" style={{backgroundColor: PHASE_COLORS[clientNames[targetClient]?.nasm_phase || 1]}}>{clientNames[targetClient]?.nasm_phase || 1}</div>
                 <div className="text-left">
                   <p className="font-black text-sm text-slate-900">{titleCase(clientNames[targetClient]?.name||targetClient)}</p>
-                  <p className="text-[10px] text-slate-500">{targetClient}</p>
+                  <p className="text-[10px] text-slate-500">{NASM_OPT_PHASES[clientNames[targetClient]?.nasm_phase || 1]?.phase}</p>
                 </div>
                 {clientDays.length>0&&(
                   <div className="ml-auto flex gap-1 flex-wrap justify-end">
@@ -1027,7 +1147,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ExerciseEditRow (للمدرب - يقدر يعدل والترتيب)
+// ExerciseEditRow
 // ══════════════════════════════════════════════════════════════════════════════
 function ExerciseEditRow({ exercise, idx, arr, db, appId }) {
   const [editMode, setEditMode] = useState(false);
@@ -1091,7 +1211,7 @@ function ExerciseEditRow({ exercise, idx, arr, db, appId }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ExerciseRow (للعميل - بتسجيل التمارين)
+// ExerciseRow
 // ══════════════════════════════════════════════════════════════════════════════
 function ExerciseRow({ exercise, db, appId, identifier, allLogs, sessionFinished }) {
   const setsCount = parseInt(exercise.sets) || 3;
@@ -1102,8 +1222,8 @@ function ExerciseRow({ exercise, db, appId, identifier, allLogs, sessionFinished
 
   useEffect(()=>{ if(sessionFinished) setIsSaved(false); },[sessionFinished]);
   useEffect(()=>{
-    const today = new Date().toLocaleDateString('ar-EG');
-    const saved = allLogs.some(l=>l.exerciseId===exercise.id&&l.clientName===identifier&&l.completedAt?.toDate().toLocaleDateString('ar-EG')===today);
+    const today = new Date().toLocaleDateString('en-US');
+    const saved = allLogs.some(l=>l.exerciseId===exercise.id&&l.clientName===identifier&&l.completedAt?.toDate().toLocaleDateString('en-US')===today);
     if(saved) setIsSaved(true);
   },[allLogs,exercise.id,identifier]);
 
@@ -1140,7 +1260,7 @@ function ExerciseRow({ exercise, db, appId, identifier, allLogs, sessionFinished
             {exercise.gifUrl&&<button onClick={()=>setShowGif(true)} className="text-xs bg-slate-900 text-emerald-400 px-2 py-1 rounded-lg font-black hover:bg-slate-800 transition-all shrink-0">GIF</button>}
           </div>
           
-          {/* Metadata Row - Coach Note, Muscle Group, Tempo, Rest */}
+          {/* Metadata Row */}
           <div className="flex flex-wrap gap-2 mb-2 items-center">
             {exercise.coachNote&&<span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg">💬 {exercise.coachNote}</span>}
             {muscleGroup&&<span className="text-[10px] text-slate-600 font-bold bg-slate-100 px-2.5 py-1 rounded-lg">{muscleGroup}</span>}
@@ -1148,7 +1268,7 @@ function ExerciseRow({ exercise, db, appId, identifier, allLogs, sessionFinished
             {exercise.reps&&<span className="text-[10px] text-slate-600 font-bold bg-slate-100 px-2.5 py-1 rounded-lg">{exercise.sets}×{exercise.reps}</span>}
           </div>
 
-          {/* Save/Skip Buttons Below Name */}
+          {/* Save/Skip Buttons */}
           <div className="flex gap-2">
             {!saved&&!isSkipped&&(
               <>
@@ -1180,7 +1300,7 @@ function ExerciseRow({ exercise, db, appId, identifier, allLogs, sessionFinished
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ClientView (مع Category Tabs)
+// ClientView
 // ══════════════════════════════════════════════════════════════════════════════
 function ClientView({ workouts, db, appId, identifier, allLogs }) {
   const [selectedDay, setSelectedDay]         = useState('');
@@ -1215,8 +1335,8 @@ function ClientView({ workouts, db, appId, identifier, allLogs }) {
   },[filtered]);
 
   const summaryData = useMemo(()=>{
-    const today=new Date().toLocaleDateString('ar-EG');
-    const tl=allLogs.filter(l=>l.clientName===identifier&&l.completedAt?.toDate().toLocaleDateString('ar-EG')===today);
+    const today=new Date().toLocaleDateString('en-US');
+    const tl=allLogs.filter(l=>l.clientName===identifier&&l.completedAt?.toDate().toLocaleDateString('en-US')===today);
     return{count:tl.length,totalSets:tl.reduce((a,l)=>a+(l.setsData?.length||0),0),prs:tl.filter(l=>l.isPR)};
   },[allLogs,identifier]);
 
@@ -1230,7 +1350,7 @@ function ClientView({ workouts, db, appId, identifier, allLogs }) {
         <div className="fixed inset-0 z-[998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
           <div className="bg-white border-2 border-slate-200 rounded-[3rem] p-8 w-full max-w-sm shadow-2xl text-center space-y-5">
             <div className="text-5xl">🎉</div>
-            <h2 className="font-black text-2xl text-slate-900">Session Done!</h2>
+            <h2 className="font-black text-2xl text-slate-900">Session Complete!</h2>
             <div className="grid grid-cols-3 gap-3">
               {[{l:'Exercises',v:summaryData.count},{l:'Sets',v:summaryData.totalSets},{l:'PRs 🏆',v:summaryData.prs.length}].map((s,i)=>(
                 <div key={i} className="p-4 rounded-2xl bg-slate-50">
@@ -1324,13 +1444,364 @@ function ClientView({ workouts, db, appId, identifier, allLogs }) {
             if(!note)return;
             await addDoc(collection(db,'artifacts',appId,'public','data','user_notes'),{clientName:identifier,note,timestamp:serverTimestamp()});
             setNote('');alert('Sent ✅');
-          }} className="absolute bottom-4 right-4 bg-slate-900 text-emerald-400 px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-xl">Send</button>
+          }} className="absolute bottom-4 left-4 bg-slate-900 text-emerald-400 px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-xl">Send</button>
         </div>
       </div>
     </div>
   );
 }
 
+// ─── أضف هذا الـ Component قبل export default App ──────────────────────
+// ────────────────────────────────────────────────────────────────────────
+ 
+function ProgramBuilder({ onClose }) {
+  const [step, setStep] = useState('assessment'); // assessment, review, program
+  const [formData, setFormData] = useState({
+    name: '',
+    age: '',
+    gender: '',
+    fitnessLevel: 'Beginner',
+    goal: 'General Fitness',
+    daysPerWeek: 3,
+    equipment: [],
+    injuries: '',
+  });
+  const [generatedProgram, setGeneratedProgram] = useState(null);
+ 
+  const EXERCISES_BY_PHASE = {
+    1: {
+      Chest: ['Push-ups (BW)', 'Dumbbell Bench Press'],
+      Back: ['Bodyweight Rows', 'Dumbbell Rows'],
+      Legs: ['Bodyweight Squats', 'Dumbbell Lunges'],
+      Shoulders: ['Dumbbell Shoulder Press', 'Lateral Raises (DB)'],
+      Core: ['Plank', 'Bird Dog', 'Dead Bug']
+    },
+    2: {
+      Chest: ['Barbell Bench Press', 'Incline Dumbbell Press'],
+      Back: ['Barbell Rows', 'Pull-ups', 'Lat Pulldown'],
+      Legs: ['Barbell Squats', 'Romanian Deadlifts'],
+      Shoulders: ['Barbell Shoulder Press', 'Dumbbell Shoulder Press'],
+      Core: ['Plank Variations', 'Anti-Rotation Press']
+    },
+    3: {
+      Chest: ['Barbell Incline Press', 'Dumbbell Flyes', 'Machine Press'],
+      Back: ['Weighted Pull-ups', 'T-Bar Rows', 'Seal Rows'],
+      Legs: ['Barbell Squats (heavy)', 'Leg Press', 'Leg Curls'],
+      Shoulders: ['Heavy Dumbbell Press', 'Machine Shoulder Press'],
+      Core: ['Weighted Planks', 'Hanging Leg Raises']
+    },
+    4: {
+      Chest: ['Heavy Barbell Bench', '1RM Test'],
+      Back: ['Heavy Deadlifts', 'Heavy Rows'],
+      Legs: ['Heavy Squats', 'Heavy Deadlifts'],
+      Shoulders: ['Heavy Military Press'],
+      Core: ['Heavy Core Movements']
+    },
+    5: {
+      Chest: ['Plyometric Push-ups', 'Medicine Ball Chest Pass'],
+      Back: ['Explosive Pull-ups', 'Explosive Rows'],
+      Legs: ['Jump Squats', 'Box Jumps', 'Explosive Lunges'],
+      Shoulders: ['Medicine Ball Throws'],
+      Core: ['Explosive Core Work']
+    }
+  };
+ 
+  const determineStartingPhase = () => {
+    if (formData.fitnessLevel === 'Beginner') return 1;
+    if (formData.fitnessLevel === 'Intermediate') return 2;
+    return 3;
+  };
+ 
+  const generateWeeklyPlan = (phase, daysPerWeek) => {
+    const muscleGroups = ['Chest', 'Back', 'Legs', 'Shoulders', 'Core'];
+    const plan = {};
+    const dayLabels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    
+    for (let i = 0; i < daysPerWeek; i++) {
+      const muscleGroup = muscleGroups[i % muscleGroups.length];
+      plan[dayLabels[i]] = {
+        muscleGroup,
+        exercises: EXERCISES_BY_PHASE[phase][muscleGroup] || [],
+        sets: NASM_OPT_PHASES[phase].reps,
+        reps: NASM_OPT_PHASES[phase].reps,
+        intensity: NASM_OPT_PHASES[phase].intensity,
+        rest: NASM_OPT_PHASES[phase].rest
+      };
+    }
+    
+    return plan;
+  };
+ 
+  const handleFormChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    if (type === 'checkbox') {
+      setFormData(prev => ({
+        ...prev,
+        equipment: checked 
+          ? [...prev.equipment, value]
+          : prev.equipment.filter(item => item !== value)
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+  };
+ 
+  const handleGenerateProgram = () => {
+    const startingPhase = determineStartingPhase();
+    const weeklyPlan = generateWeeklyPlan(startingPhase, parseInt(formData.daysPerWeek));
+    
+    const program = {
+      ...formData,
+      startingPhase,
+      phaseInfo: NASM_OPT_PHASES[startingPhase],
+      weeklyPlan,
+      createdAt: new Date().toLocaleDateString('ar-SA'),
+      duration: NASM_OPT_PHASES[startingPhase].duration
+    };
+    
+    setGeneratedProgram(program);
+    setStep('program');
+  };
+ 
+  if (step === 'assessment') {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-3xl font-black text-slate-900">NASM OPT Builder</h2>
+            <button onClick={onClose} className="text-2xl text-slate-400 hover:text-slate-600">×</button>
+          </div>
+ 
+          <form className="space-y-5">
+            {/* Personal Info */}
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="text"
+                name="name"
+                placeholder="الاسم"
+                value={formData.name}
+                onChange={handleFormChange}
+                className="col-span-2 px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+              />
+              <input
+                type="number"
+                name="age"
+                placeholder="العمر"
+                value={formData.age}
+                onChange={handleFormChange}
+                className="px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+              />
+              <select
+                name="gender"
+                value={formData.gender}
+                onChange={handleFormChange}
+                className="px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+              >
+                <option value="">الجنس</option>
+                <option value="Male">ذكر</option>
+                <option value="Female">أنثى</option>
+              </select>
+            </div>
+ 
+            {/* Fitness Level */}
+            <div>
+              <label className="block text-sm font-black text-slate-700 mb-2">مستوى اللياقة</label>
+              <select
+                name="fitnessLevel"
+                value={formData.fitnessLevel}
+                onChange={handleFormChange}
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+              >
+                <option value="Beginner">مبتدئ</option>
+                <option value="Intermediate">متوسط</option>
+                <option value="Advanced">متقدم</option>
+              </select>
+            </div>
+ 
+            {/* Goal */}
+            <div>
+              <label className="block text-sm font-black text-slate-700 mb-2">الهدف</label>
+              <select
+                name="goal"
+                value={formData.goal}
+                onChange={handleFormChange}
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+              >
+                <option value="General Fitness">اللياقة العامة</option>
+                <option value="Weight Loss">خسارة الوزن</option>
+                <option value="Muscle Gain">بناء العضلات</option>
+                <option value="Strength">القوة</option>
+                <option value="Endurance">التحمل</option>
+              </select>
+            </div>
+ 
+            {/* Days Per Week */}
+            <div>
+              <label className="block text-sm font-black text-slate-700 mb-2">أيام التمرين في الأسبوع</label>
+              <select
+                name="daysPerWeek"
+                value={formData.daysPerWeek}
+                onChange={handleFormChange}
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none"
+              >
+                {[2, 3, 4, 5, 6].map(day => <option key={day} value={day}>{day} أيام</option>)}
+              </select>
+            </div>
+ 
+            {/* Equipment */}
+            <div>
+              <label className="block text-sm font-black text-slate-700 mb-3">الأدوات المتاحة</label>
+              <div className="grid grid-cols-2 gap-3">
+                {['Dumbbells', 'Barbell', 'Cable', 'Bodyweight', 'Machines'].map(eq => (
+                  <label key={eq} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      value={eq}
+                      checked={formData.equipment.includes(eq)}
+                      onChange={handleFormChange}
+                      className="w-4 h-4 accent-emerald-500"
+                    />
+                    <span className="text-sm font-black text-slate-700">{eq}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+ 
+            {/* Injuries */}
+            <textarea
+              name="injuries"
+              placeholder="إصابات سابقة أو ملاحظات طبية"
+              value={formData.injuries}
+              onChange={handleFormChange}
+              className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none h-20 resize-none"
+            />
+ 
+            {/* Buttons */}
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-3 border-2 border-slate-200 rounded-xl font-black text-slate-700 hover:bg-slate-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerateProgram}
+                className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-black hover:bg-emerald-600 transition-all"
+              >
+                إنشاء البرنامج
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+ 
+  if (step === 'program' && generatedProgram) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-3xl font-black text-slate-900">برنامجك التدريبي</h2>
+            <button onClick={onClose} className="text-2xl text-slate-400 hover:text-slate-600">×</button>
+          </div>
+ 
+          {/* Program Header */}
+          <div className="bg-gradient-to-r from-emerald-50 to-blue-50 rounded-2xl p-6 mb-6 border-2 border-emerald-200">
+            <h3 className="text-2xl font-black text-slate-900 mb-4">{generatedProgram.name}</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-slate-600 font-black text-xs">المرحلة</p>
+                <p className="text-lg font-black text-emerald-600">{generatedProgram.phaseInfo.level}</p>
+              </div>
+              <div>
+                <p className="text-slate-600 font-black text-xs">المدة</p>
+                <p className="text-lg font-black text-emerald-600">{generatedProgram.duration}</p>
+              </div>
+              <div>
+                <p className="text-slate-600 font-black text-xs">مستوى اللياقة</p>
+                <p className="text-lg font-black text-emerald-600">{generatedProgram.fitnessLevel}</p>
+              </div>
+              <div>
+                <p className="text-slate-600 font-black text-xs">الهدف</p>
+                <p className="text-lg font-black text-emerald-600">{generatedProgram.goal}</p>
+              </div>
+            </div>
+          </div>
+ 
+          {/* Phase Info */}
+          <div className="bg-slate-900 text-white rounded-2xl p-6 mb-6">
+            <h4 className="text-xl font-black mb-4">{generatedProgram.phaseInfo.phase}</h4>
+            <p className="text-slate-300 mb-4">{generatedProgram.phaseInfo.description}</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="bg-slate-800 p-3 rounded-lg">
+                <p className="text-slate-400 font-black text-xs">التكرارات</p>
+                <p className="text-emerald-400 font-black">{generatedProgram.phaseInfo.reps}</p>
+              </div>
+              <div className="bg-slate-800 p-3 rounded-lg">
+                <p className="text-slate-400 font-black text-xs">الشدة</p>
+                <p className="text-emerald-400 font-black">{generatedProgram.phaseInfo.intensity}</p>
+              </div>
+              <div className="bg-slate-800 p-3 rounded-lg">
+                <p className="text-slate-400 font-black text-xs">الراحة</p>
+                <p className="text-emerald-400 font-black text-xs">{generatedProgram.phaseInfo.rest}</p>
+              </div>
+              <div className="bg-slate-800 p-3 rounded-lg">
+                <p className="text-slate-400 font-black text-xs">التركيز</p>
+                <p className="text-emerald-400 font-black text-xs">{generatedProgram.phaseInfo.focus}</p>
+              </div>
+            </div>
+          </div>
+ 
+          {/* Weekly Plan */}
+          <div className="mb-6">
+            <h4 className="text-xl font-black text-slate-900 mb-4">جدول الأسبوع</h4>
+            <div className="space-y-3">
+              {Object.entries(generatedProgram.weeklyPlan).map(([day, info]) => (
+                <div key={day} className="bg-slate-50 rounded-xl p-4 border-2 border-slate-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h5 className="font-black text-slate-900">{day}</h5>
+                    <span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-xs font-black">
+                      {info.muscleGroup}
+                    </span>
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    <p className="font-black mb-2">التمارين:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      {info.exercises.map(ex => <li key={ex}>{ex}</li>)}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+ 
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={() => {
+                const text = `برنامج التدريب NASM OPT\n\n${generatedProgram.name}\n\nالمرحلة: ${generatedProgram.phaseInfo.level}\nالمدة: ${generatedProgram.duration}\n\n${Object.entries(generatedProgram.weeklyPlan).map(([day, info]) => `${day}: ${info.muscleGroup}`).join('\n')}`;
+                navigator.clipboard.writeText(text);
+                alert('تم نسخ البرنامج!');
+              }}
+              className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-black hover:bg-blue-600 transition-all"
+            >
+              نسخ البرنامج
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-black hover:bg-emerald-600 transition-all"
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
 // ══════════════════════════════════════════════════════════════════════════════
 // Main App
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1421,10 +1892,10 @@ export default function WorkoutApp() {
         </div>
       </nav>
       <main className="max-w-5xl mx-auto p-4 pt-20">
-        {role==='trainer'
-          ?<TrainerDashboard workouts={workouts} logs={allLogs} db={db} appId={APP_ID} clientNames={clientRegistry}/>
-          :<ClientView workouts={workouts.filter(w=>w.assignedTo===identifier)} db={db} appId={APP_ID} identifier={identifier} allLogs={allLogs}/>
-        }
+{role==='trainer'
+  ?<TrainerDashboard workouts={workouts} logs={allLogs} db={db} appId={APP_ID} clientNames={clientRegistry}/>
+  :<ClientView workouts={workouts.filter(w=>w.assignedTo===identifier)} db={db} appId={APP_ID} identifier={identifier} allLogs={allLogs}/>
+}
       </main>
       <style>{`
         .hide-scrollbar::-webkit-scrollbar,.scrollbar-hide::-webkit-scrollbar{display:none}

@@ -263,8 +263,89 @@ function ClientProfileViewModal({ client, onClose, db, appId, onToPlan }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Add Exercise to Library Modal
+// Edit Exercise Modal (تعديل التصنيف والبيانات)
 // ═══════════════════════════════════════════════════════════════════════════════
+function EditExerciseModal({ exercise, onClose, db, appId }) {
+  const [formData, setFormData] = useState({
+    name: exercise.name,
+    category: exercise.category || 'RESISTANCE',
+    sets: exercise.sets || '',
+    reps: exercise.reps || '',
+    tempo: exercise.tempo || '',
+    gifUrl: exercise.gifUrl || '',
+    description: exercise.description || ''
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateDoc(doc(db,'artifacts',appId,'public','data','library',exercise.id),{
+        name: formData.name,
+        category: formData.category,
+        sets: formData.sets,
+        reps: formData.reps,
+        tempo: formData.tempo,
+        gifUrl: formData.gifUrl,
+        description: formData.description
+      });
+      onClose();
+      alert('Exercise updated ✅');
+    } catch(e) {
+      console.error(e);
+      alert('Error updating exercise');
+    }
+    setSaving(false);
+  };
+
+  useBackButton(true, onClose);
+
+  return (
+    <div className="fixed inset-0 z-[998] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+        <div className="bg-slate-900 p-5 flex justify-between items-center">
+          <button onClick={onClose} className="text-slate-400 font-black text-sm">✕</button>
+          <span className="text-emerald-400 font-black text-base">Edit Exercise</span>
+        </div>
+
+        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+          <input type="text" value={formData.name} onChange={e=>setFormData({...formData,name:e.target.value})} placeholder="Exercise Name" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+          
+          <select value={formData.category} onChange={e=>setFormData({...formData,category:e.target.value})} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50">
+            <option value="WARM-UP">WARM-UP</option>
+            <option value="ACTIVATION">ACTIVATION</option>
+            <option value="SKILL">SKILL</option>
+            <option value="RESISTANCE">RESISTANCE</option>
+            <option value="CARDIO">CARDIO</option>
+            <option value="COOL-DOWN">COOL-DOWN</option>
+          </select>
+
+          <div className="grid grid-cols-2 gap-2">
+            <input type="number" value={formData.sets} onChange={e=>setFormData({...formData,sets:e.target.value})} placeholder="Default Sets" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 text-center"/>
+            <input type="text" value={formData.reps} onChange={e=>setFormData({...formData,reps:e.target.value})} placeholder="Default Reps" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 text-center"/>
+          </div>
+
+          <input type="text" value={formData.tempo} onChange={e=>setFormData({...formData,tempo:e.target.value})} placeholder="Tempo" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+          <input type="text" value={formData.gifUrl} onChange={e=>setFormData({...formData,gifUrl:e.target.value})} placeholder="GIF URL" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+          <textarea value={formData.description} onChange={e=>setFormData({...formData,description:e.target.value})} placeholder="Description/Notes" rows={3} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 resize-none"/>
+        </div>
+
+        <div className="p-4 border-t border-slate-200 flex gap-2">
+          <button onClick={handleSave} disabled={saving} className="flex-1 bg-emerald-500 text-white py-3 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all disabled:opacity-40">
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button onClick={onClose} className="flex-1 border-2 border-slate-200 text-slate-400 py-3 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function AddExerciseModal({ onClose, db, appId }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -521,6 +602,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
   const [selectedProfileModal, setSelectedProfileModal] = useState(null);
   const [showAddClient, setShowAddClient]     = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [editingExercise, setEditingExercise] = useState(null);
   const [menuOpen, setMenuOpen]               = useState(false);
 
   const bg = 'bg-white border-slate-200';
@@ -585,7 +667,8 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
     {id:'clients', label:'Clients', icon:'👥'},
     {id:'library', label:'Library', icon:'📚'},
     {id:'plan', label:'Plan', icon:'📋'},
-    {id:'analytics', label:'Analytics', icon:'📈'}
+    {id:'analytics', label:'Analytics', icon:'📈'},
+    {id:'inbox', label:'Inbox', icon:'📮'}
   ];
 
   return(
@@ -732,7 +815,10 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                               <p className="font-black text-sm text-slate-900">{formatName(ex.name)}</p>
                               {ex.gifUrl&&<p className="text-[10px] text-blue-600 font-black">✓ GIF</p>}
                             </div>
-                            <button onClick={()=>deleteDoc(doc(db,'artifacts',appId,'public','data','library',ex.id))} className="text-red-400 font-black text-[10px] bg-red-50 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white">Del</button>
+                            <div className="flex gap-1">
+                              <button onClick={()=>setEditingExercise(ex)} className="text-blue-400 font-black text-[10px] bg-blue-50 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-blue-500 hover:text-white">Edit</button>
+                              <button onClick={()=>deleteDoc(doc(db,'artifacts',appId,'public','data','library',ex.id))} className="text-red-400 font-black text-[10px] bg-red-50 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white">Del</button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -768,6 +854,50 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
               </div>
             )}
             <input type="text" placeholder="Day Name (e.g Day 4)" value={sessionName} onChange={e=>setSessionName(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
+            
+            {/* CSV Upload */}
+            <div className="border-2 border-dashed border-slate-300 rounded-2xl p-4 text-center">
+              <input type="file" accept=".csv" onChange={async(e)=>{
+                const file = e.target.files[0];
+                if(!file) return;
+                const text = await file.text();
+                const lines = text.split('\n').filter(l=>l.trim());
+                const [header, ...rows] = lines;
+                const cols = header.split(',').map(c=>c.trim().toLowerCase());
+                
+                if(!targetClient || !sessionName) { alert('Select client and day first'); return; }
+                
+                let count = 0;
+                for(const row of rows) {
+                  if(!row.trim()) continue;
+                  const values = row.split(',').map(v=>v.trim());
+                  const obj = {};
+                  cols.forEach((col,i)=>obj[col]=values[i]||'');
+                  
+                  if(!obj.name) continue;
+                  await addDoc(collection(db,'artifacts',appId,'public','data','workouts'),{
+                    name: obj.name,
+                    category: obj.category||'RESISTANCE',
+                    sets: obj.sets||'3',
+                    reps: obj.reps||'10',
+                    tempo: obj.tempo||'',
+                    coachNote: obj.coachnote||'',
+                    gifUrl: obj.gifurl||'',
+                    assignedTo: targetClient,
+                    day: sessionName,
+                    orderIndex: Date.now() + count
+                  });
+                  count++;
+                }
+                alert(`✅ Imported ${count} exercises from CSV`);
+                e.target.value = '';
+              }} className="hidden" id="csvInput"/>
+              <label htmlFor="csvInput" className="cursor-pointer block">
+                <p className="font-black text-sm text-slate-900 mb-2">📊 Import from CSV</p>
+                <p className="text-xs text-slate-500 mb-3">Click to upload or drag & drop</p>
+                <p className="text-[10px] text-slate-400">Format: name, category, sets, reps, tempo, coachnote, gifurl</p>
+              </label>
+            </div>
             <SearchableDropdown options={libraryData} value={newEx.name} onChange={v=>setNewEx({...newEx,name:v})} placeholder="Search or add exercise..." allowNew={true}/>
             <div className="grid grid-cols-3 gap-2">
               <input type="number" placeholder="Sets" value={newEx.sets} onChange={e=>setNewEx({...newEx,sets:e.target.value})} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
@@ -876,8 +1006,21 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
         </div>
       )}
 
+      {/* INBOX */}
+      {activeTab==='inbox'&&(
+        <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+          <h3 className={`font-black text-base border-b pb-3 mb-4 ${tx} border-slate-200`}>Client Messages</h3>
+          <div className="text-center py-20 text-slate-400 font-black">
+            <p className="text-3xl mb-3">📮</p>
+            <p>No messages yet</p>
+            <p className="text-sm mt-2">Messages from clients will appear here</p>
+          </div>
+        </div>
+      )}
+
       {showAddClient&&<AddNewClientModal onClose={()=>setShowAddClient(false)} db={db} appId={appId}/>}
       {showAddExercise&&<AddExerciseModal onClose={()=>setShowAddExercise(false)} db={db} appId={appId}/>}
+      {editingExercise&&<EditExerciseModal exercise={editingExercise} onClose={()=>setEditingExercise(null)} db={db} appId={appId}/>}
       {showTemplate&&<DayTemplateModal onClose={()=>setShowTemplate(false)} db={db} appId={appId} libraryData={libraryData} targetClient={targetClient} sessionName={sessionName}/>}
     </div>
   );

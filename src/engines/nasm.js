@@ -1,273 +1,65 @@
-// ─── NASM OPT Engine ────────────────────────────────────────────────────────
-// حسابات وعمليات NASM OPT الأساسية
+import { getMuscleGroup, dateFromLog, startOfDay } from '../utils/formatters';
 
-import { NASM_OPT_PHASES, PHASE_PROGRESSION } from '../constants/nasm';
+export function getClientMetrics(phone, workouts, logs) {
 
-// ─── Get Phase Info ──────────────────────────────────────────────────────────
-export const getPhaseInfo = (phaseNumber) => {
-  return NASM_OPT_PHASES[phaseNumber] || NASM_OPT_PHASES[1];
-};
+  const clientWorkouts = workouts.filter(w => w.assignedTo === phone);
 
-export const getAllPhases = () => {
-  return Object.values(NASM_OPT_PHASES);
-};
+  const clientLogs = logs.filter(l => l.clientName === phone);
 
-// ─── Get Phase Progression ───────────────────────────────────────────────────
-export const getPhaseProgression = (level = 'Beginner') => {
-  return PHASE_PROGRESSION[level] || PHASE_PROGRESSION.Beginner;
-};
+  const datedLogs = clientLogs.map(l => ({...l, _date: dateFromLog(l)})).filter(l => l._date);
 
-export const getNextPhase = (currentPhase, level = 'Beginner') => {
-  const progression = getPhaseProgression(level);
-  const currentIndex = progression.indexOf(currentPhase);
-  
-  if (currentIndex === -1) return progression[0];
-  
-  const nextIndex = (currentIndex + 1) % progression.length;
-  return progression[nextIndex];
-};
+  const lastLog = datedLogs.sort((a,b) => b._date - a._date)[0];
 
-export const getPreviousPhase = (currentPhase, level = 'Beginner') => {
-  const progression = getPhaseProgression(level);
-  const currentIndex = progression.indexOf(currentPhase);
-  
-  if (currentIndex === -1) return progression[0];
-  
-  const prevIndex = currentIndex === 0 ? progression.length - 1 : currentIndex - 1;
-  return progression[prevIndex];
-};
+  const now = new Date();
 
-// ─── Recommended Starting Phase ──────────────────────────────────────────────
-export const recommendStartingPhase = (level = 'Beginner') => {
-  const phaseMap = {
-    'Beginner': 1,
-    'Intermediate': 2,
-    'Advanced': 3
-  };
-  
-  return phaseMap[level] || 1;
-};
+  const twentyDaysAgo = new Date(now);
 
-// ─── Phase Characteristics ───────────────────────────────────────────────────
-export const getPhaseCharacteristics = (phaseNumber) => {
-  const phase = getPhaseInfo(phaseNumber);
-  
-  return {
-    phaseNumber,
-    name: phase.phase,
-    level: phase.level,
-    description: phase.description,
-    duration: phase.duration,
-    repRange: phase.reps,
-    intensityRange: phase.intensity,
-    restPeriod: phase.rest,
-    focus: phase.focus,
-    primaryGoal: getPrimaryGoal(phaseNumber)
-  };
-};
+  twentyDaysAgo.setDate(now.getDate() - 20);
 
-// ─── Primary Goal ───────────────────────────────────────────────────────────
-export const getPrimaryGoal = (phaseNumber) => {
-  const goals = {
-    1: 'Stability & Control',
-    2: 'Muscular Endurance',
-    3: 'Muscle Growth',
-    4: 'Maximum Strength',
-    5: 'Explosive Power'
-  };
-  
-  return goals[phaseNumber] || 'General Fitness';
-};
+  const recentLogs = datedLogs.filter(l => l._date >= twentyDaysAgo);
 
-// ─── Rep Range to Number ────────────────────────────────────────────────────
-export const parseRepRange = (repRange = '') => {
-  const match = repRange.match(/(\d+)-?(\d+)?/);
-  
-  if (!match) return { min: 1, max: 10, average: 5.5 };
-  
-  const min = parseInt(match[1], 10);
-  const max = parseInt(match[2], 10) || min;
-  const average = (min + max) / 2;
-  
-  return { min, max, average };
-};
+  const activeDays = new Set(recentLogs.map(l => startOfDay(l._date).toISOString().slice(0,10))).size;
 
-// ─── Intensity Range to Percentage ───────────────────────────────────────────
-export const parseIntensityRange = (intensityRange = '') => {
-  const match = intensityRange.match(/(\d+)-?(\d+)?/);
-  
-  if (!match) return { min: 50, max: 70, average: 60 };
-  
-  const min = parseInt(match[1], 10);
-  const max = parseInt(match[2], 10) || min;
-  const average = (min + max) / 2;
-  
-  return { min, max, average };
-};
+  const expectedDays = Math.max(1, Math.min(28, Number(clientWorkouts.length ? 12 : 4)));
 
-// ─── Rest Period to Seconds ─────────────────────────────────────────────────
-export const parseRestPeriod = (restPeriod = '') => {
-  const match = restPeriod.match(/(\d+)-?(\d+)?/);
-  
-  if (!match) return { min: 60, max: 90, average: 75 };
-  
-  const min = parseInt(match[1], 10);
-  const max = parseInt(match[2], 10) || min;
-  const average = (min + max) / 2;
-  
-  return { min, max, average, formatted: restPeriod };
-};
+  const adherence = Math.min(100, Math.round((activeDays / expectedDays) * 100));
 
-// ─── Determine Appropriate Phase ─────────────────────────────────────────────
-export const determineAppropriatePhase = (clientData) => {
-  const {
-    level = 'Beginner',
-    goal = 'General',
-    injuries = '',
-    ageGroup = 'Adult'
-  } = clientData;
+  const muscleCounts = {};
 
-  // Base recommendation from level
-  let phase = recommendStartingPhase(level);
+  clientLogs.forEach(l => {
 
-  // Adjust based on goals
-  if (goal.toLowerCase().includes('strength')) {
-    phase = Math.max(phase, 4);
-  } else if (goal.toLowerCase().includes('muscle')) {
-    phase = Math.max(phase, 3);
-  } else if (goal.toLowerCase().includes('endurance')) {
-    phase = Math.max(phase, 2);
-  }
+    const muscle = getMuscleGroup(l.exerciseName);
 
-  // Downgrade if injured
-  if (injuries && injuries.trim()) {
-    phase = Math.min(phase, 1);
-  }
+    if (muscle) muscleCounts[muscle] = (muscleCounts[muscle] || 0) + 1;
 
-  // Adjust for age
-  if (ageGroup === 'Senior' || ageGroup === '60+') {
-    phase = Math.min(phase, 2);
-  }
+  });
 
-  return phase;
-};
+  const topMuscle = Object.entries(muscleCounts).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
 
-// ─── Phase Transition Logic ─────────────────────────────────────────────────
-export const shouldTransitionPhase = (clientMetrics, currentPhase) => {
-  if (!clientMetrics) return false;
+  const avgRpeLogs = clientLogs.filter(l => Number(l.rpe));
 
-  const { adherence, avgRpe, completed } = clientMetrics;
-
-  // Need at least 3 sessions to transition
-  if (completed < 3) return false;
-
-  // Good adherence (>70%) and moderate RPE (6-8)
-  const goodAdherence = adherence >= 70;
-  const appropriateRpe = avgRpe >= 6 && avgRpe <= 8;
-
-  return goodAdherence && appropriateRpe;
-};
-
-// ─── Get Recommended Sets/Reps ──────────────────────────────────────────────
-export const getRecommendedSetsReps = (phaseNumber, exerciseType = 'compound') => {
-  const phase = getPhaseInfo(phaseNumber);
-  const repRange = parseRepRange(phase.reps);
-
-  // Adjust sets based on phase
-  const setsMap = {
-    1: exerciseType === 'compound' ? 3 : 2,
-    2: exerciseType === 'compound' ? 4 : 3,
-    3: exerciseType === 'compound' ? 4 : 3,
-    4: exerciseType === 'compound' ? 5 : 3,
-    5: exerciseType === 'compound' ? 4 : 3
-  };
+  const avgRpe = avgRpeLogs.length ? (avgRpeLogs.reduce((a,l)=>a+Number(l.rpe),0)/avgRpeLogs.length).toFixed(1) : '—';
 
   return {
-    phase: phaseNumber,
-    sets: setsMap[phaseNumber] || 3,
-    reps: `${repRange.min}-${repRange.max}`,
-    repRange,
-    intensity: phase.intensity,
-    rest: phase.rest,
-    tempo: getPhaseSpecificTempo(phaseNumber)
-  };
-};
-
-// ─── Phase-specific Tempo ────────────────────────────────────────────────────
-export const getPhaseSpecificTempo = (phaseNumber) => {
-  const tempoMap = {
-    1: '2-0-2-0',    // Slow and controlled
-    2: '2-0-2-0',    // Controlled
-    3: '2-1-2-0',    // Time under tension
-    4: '3-1-1-0',    // Explosive concentric
-    5: 'Explosive'   // Fast and explosive
+    assigned: clientWorkouts.length,
+    logs: clientLogs.length,
+    completed: clientLogs.length,
+    prs: clientLogs.filter(l => l.isPR).length,
+    avgRpe,
+    topMuscle,
+    adherence,
+    lastDate: lastLog?._date || null,
+    daysSinceLast: lastLog?._date ? Math.floor((startOfDay(now)-startOfDay(lastLog._date))/(1000*60*60*24)) : 999,
+    muscleCounts,
   };
 
-  return tempoMap[phaseNumber] || '2-0-2-0';
-};
-
-// ─── Calculate Volume ────────────────────────────────────────────────────────
-export const calculateVolume = (sets, reps, weight) => {
-  const repCount = typeof reps === 'string' 
-    ? parseRepRange(reps).average 
-    : reps;
-  
-  return sets * repCount * weight;
-};
-
-// ─── Estimate One Rep Max ───────────────────────────────────────────────────
-export const estimateOneRepMax = (weight, reps) => {
-  // Epley formula: 1RM = weight × (1 + (reps / 30))
-  if (reps === 1) return weight;
-  
-  return weight * (1 + (reps / 30));
-};
-
-// ─── Phase Duration ──────────────────────────────────────────────────────────
-export const getPhaseDuration = (phaseNumber) => {
-  const phase = getPhaseInfo(phaseNumber);
-  const match = phase.duration.match(/(\d+)/);
-  
-  return {
-    weeks: parseInt(match?.[1] || 4, 10),
-    duration: phase.duration
-  };
-};
-
-// ─── Get Phase Color ────────────────────────────────────────────────────────
-export const getPhaseColor = (phaseNumber) => {
-  const colorMap = {
-    1: '#10b981',  // Emerald
-    2: '#3b82f6',  // Blue
-    3: '#f59e0b',  // Amber
-    4: '#ef4444',  // Red
-    5: '#8b5cf6'   // Purple
-  };
-  
-  return colorMap[phaseNumber] || '#64748b';
-};
-
-// ─── Export all functions ───────────────────────────────────────────────────
-export const nasmEngine = {
-  getPhaseInfo,
-  getAllPhases,
-  getPhaseProgression,
-  getNextPhase,
-  getPreviousPhase,
-  recommendStartingPhase,
-  getPhaseCharacteristics,
-  getPrimaryGoal,
-  parseRepRange,
-  parseIntensityRange,
-  parseRestPeriod,
-  determineAppropriatePhase,
-  shouldTransitionPhase,
-  getRecommendedSetsReps,
-  getPhaseSpecificTempo,
-  calculateVolume,
-  estimateOneRepMax,
-  getPhaseDuration,
-  getPhaseColor
-};
-
-export default nasmEngine;
+}
+export function getCoachRecommendations(client, metrics) {
+  const recs = [];
+  if (metrics.daysSinceLast >= 7) recs.push('Follow up: no workout logged this week.');
+  if (metrics.adherence < 50) recs.push('Reduce plan complexity or add a lighter check-in session.');
+  if (Number(metrics.avgRpe) >= 8.5) recs.push('High average RPE: consider deload or lower volume.');
+  if (metrics.assigned > 0 && metrics.completed / metrics.assigned < 0.35) recs.push('Client may need fewer exercises per day.');
+  if (client.injuries) recs.push('Review exercise selection against injury notes before progressing load.');
+  return recs.length ? recs : ['Plan looks stable. Progress load gradually where form is clean.'];
+}

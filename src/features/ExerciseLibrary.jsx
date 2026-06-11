@@ -1,187 +1,607 @@
-// ─── ExerciseLibrary Feature ──────────────────────────────────────
-// مكتبة التمارين الكاملة مع البحث والفلترة
+import React, { useState } from 'react';
+import { addDoc, updateDoc, doc, collection, serverTimestamp } from 'firebase/firestore';
+import { CATEGORIES, MUSCLE_GROUPS } from '../services/firebase/config';
+import { getExerciseMuscle, getMuscleGroup, formatName } from '../utils/formatters';
+import { makeDefaultAlternatives, normalizeAlternatives, getFilledAlternatives, getAlternativeOptions, applySuggestedAlternatives } from '../utils/validators';
+import { useBackButton } from '../hooks/useBackButton';
 
-import React, { useState, useMemo } from 'react';
-import SearchableDropdown from '../components/ui/SearchableDropdown';
-import { CATEGORIES, MUSCLE_GROUPS } from '../constants/templates';
-import { getExerciseMuscle } from '../utils/helpers';
-import { formatName } from '../utils/formatters';
+export function EditExerciseModal({ exercise, onClose, db, appId, collectionName = 'workouts' }) {
 
-const ExerciseLibrary = ({
-  exercises = [],
-  onSelect = () => {},
-  onAdd = () => {},
-  onEdit = () => {},
-  onDelete = () => {},
-  isEditable = true
-}) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('ALL');
-  const [muscleFilter, setMuscleFilter] = useState('ALL');
+  const [formData, setFormData] = useState({
 
-  const filtered = useMemo(() => {
-    return exercises.filter(ex => {
-      const matchSearch = !searchTerm || 
-        (ex.name || '').toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchCategory = categoryFilter === 'ALL' || ex.category === categoryFilter;
-      
-      const muscle = getExerciseMuscle(ex);
-      const matchMuscle = muscleFilter === 'ALL' || muscle === muscleFilter;
-      
-      return matchSearch && matchCategory && matchMuscle;
-    });
-  }, [exercises, searchTerm, categoryFilter, muscleFilter]);
+    name: exercise.name,
 
-  const grouped = useMemo(() => {
-    const groups = {};
-    
-    filtered.forEach(ex => {
-      const cat = ex.category || 'RESISTANCE';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(ex);
-    });
-    
-    return groups;
-  }, [filtered]);
+    category: exercise.category || 'RESISTANCE',
+
+    muscleGroup: getExerciseMuscle(exercise),
+
+    sets: exercise.sets || '',
+
+    reps: exercise.reps || '',
+
+    tempo: exercise.tempo || '',
+
+    gifUrl: exercise.gifUrl || '',
+
+    description: exercise.description || '',
+
+    alternatives: normalizeAlternatives(exercise.alternatives)
+
+  });
+
+  const [saving, setSaving] = useState(false);
+
+
+
+  const handleSave = async () => {
+
+    setSaving(true);
+
+    try {
+
+      await updateDoc(doc(db,'artifacts',appId,'public','data',collectionName,exercise.id),{
+
+        name: formData.name,
+
+        category: formData.category,
+
+        muscleGroup: formData.muscleGroup,
+
+        sets: formData.sets,
+
+        reps: formData.reps,
+
+        tempo: formData.tempo,
+
+        gifUrl: formData.gifUrl,
+
+        description: formData.description,
+
+        alternatives: getFilledAlternatives(formData.alternatives)
+
+      });
+
+      onClose();
+
+      alert('Exercise updated ✅');
+
+    } catch(e) {
+
+      console.error(e);
+
+      alert('Error updating exercise');
+
+    }
+
+    setSaving(false);
+
+  };
+
+
+
+  useBackButton(true, onClose);
+
+
 
   return (
-    <div className="space-y-4">
-      {/* Search and Filters */}
-      <div className="space-y-3">
-        <input
-          type="text"
-          placeholder="Search exercises..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-4 py-2 border-2 border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-        />
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setCategoryFilter('ALL')}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-              categoryFilter === 'ALL'
-                ? 'bg-blue-500 text-white'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-            }`}
-          >
-            All
-          </button>
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setCategoryFilter(cat)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                categoryFilter === cat
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+    <div className="fixed inset-0 z-[998] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+
+      <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+
+        <div className="bg-slate-900 p-5 flex justify-between items-center">
+
+          <button onClick={onClose} className="text-slate-400 font-black text-sm">✕</button>
+
+          <span className="text-emerald-400 font-black text-base">Edit Exercise</span>
+
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setMuscleFilter('ALL')}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-              muscleFilter === 'ALL'
-                ? 'bg-green-500 text-white'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-            }`}
-          >
-            All Muscles
-          </button>
-          {MUSCLE_GROUPS.slice(0, 6).map(muscle => (
-            <button
-              key={muscle}
-              onClick={() => setMuscleFilter(muscle)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                muscleFilter === muscle
-                  ? 'bg-green-500 text-white'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-              }`}
-            >
-              {muscle}
-            </button>
-          ))}
-        </div>
-      </div>
 
-      {/* Add Button */}
-      {isEditable && (
-        <button
-          onClick={onAdd}
-          className="w-full px-4 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold transition-colors"
-        >
-          + Add New Exercise
-        </button>
-      )}
 
-      {/* Exercise List */}
-      <div className="space-y-3">
-        {Object.entries(grouped).length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-slate-500 dark:text-slate-400 font-semibold">No exercises found</p>
+        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+
+          <input type="text" value={formData.name} onChange={e=>setFormData({...formData,name:e.target.value})} placeholder="Exercise Name" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+          
+
+          <select value={formData.category} onChange={e=>setFormData({...formData,category:e.target.value})} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50">
+
+            <option value="WARM-UP">WARM-UP</option>
+
+            <option value="ACTIVATION">ACTIVATION</option>
+
+            <option value="SKILL">SKILL</option>
+
+            <option value="RESISTANCE">RESISTANCE</option>
+
+            <option value="CARDIO">CARDIO</option>
+
+            <option value="COOL-DOWN">COOL-DOWN</option>
+
+          </select>
+
+
+
+          <select value={formData.muscleGroup} onChange={e=>setFormData({...formData,muscleGroup:e.target.value})} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50">
+
+            {MUSCLE_GROUPS.map(m=><option key={m} value={m}>{m}</option>)}
+
+          </select>
+
+
+
+          <div className="grid grid-cols-2 gap-2">
+
+            <input type="number" value={formData.sets} onChange={e=>setFormData({...formData,sets:e.target.value})} placeholder="Default Sets" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 text-center"/>
+
+            <input type="text" value={formData.reps} onChange={e=>setFormData({...formData,reps:e.target.value})} placeholder="Default Reps" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 text-center"/>
+
           </div>
-        ) : (
-          Object.entries(grouped).map(([category, exs]) => (
-            <details key={category} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-              <summary className="p-4 bg-slate-100 dark:bg-slate-800 font-bold text-slate-900 dark:text-white cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 flex justify-between items-center">
-                <span>{category} ({exs.length})</span>
-                <span className="text-xs">▼</span>
-              </summary>
 
-              <div className="p-3 space-y-2 bg-slate-50 dark:bg-slate-900">
-                {exs.map(ex => (
-                  <div
-                    key={ex.id}
-                    className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between group hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
-                  >
-                    <div className="flex-1">
-                      <p className="font-bold text-slate-900 dark:text-white">
-                        {formatName(ex.name)}
-                      </p>
-                      <p className="text-xs text-slate-600 dark:text-slate-400">
-                        {getExerciseMuscle(ex)} • {ex.sets || '3'}×{ex.reps || '10'}
-                      </p>
-                    </div>
 
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => onSelect(ex)}
-                        className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs font-bold hover:bg-blue-200 dark:hover:bg-blue-800"
-                      >
-                        Select
-                      </button>
-                      {isEditable && (
-                        <>
-                          <button
-                            onClick={() => onEdit(ex)}
-                            className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 rounded text-xs font-bold hover:bg-yellow-200 dark:hover:bg-yellow-800"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => onDelete(ex.id)}
-                            className="px-2 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded text-xs font-bold hover:bg-red-200 dark:hover:bg-red-800"
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </details>
-          ))
-        )}
+
+          <input type="text" value={formData.tempo} onChange={e=>setFormData({...formData,tempo:e.target.value})} placeholder="Tempo" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+
+
+          <input type="text" value={formData.gifUrl} onChange={e=>setFormData({...formData,gifUrl:e.target.value})} placeholder="GIF URL" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+
+
+          <textarea value={formData.description} onChange={e=>setFormData({...formData,description:e.target.value})} placeholder="Description/Notes" rows={3} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 resize-none"/>
+
+
+
+          {/* Alternatives Section */}
+
+          <div className="border-t-2 border-slate-200 pt-4 mt-4">
+
+            <div className="flex items-center justify-between gap-2 mb-3">
+
+              <p className="text-xs font-black text-emerald-600 uppercase block">البدائل المتاحة (حد أقصى 3)</p>
+
+              <button
+
+                type="button"
+
+                onClick={()=>setFormData({...formData, alternatives: applySuggestedAlternatives(formData, formData.alternatives)})}
+
+                className="bg-blue-100 text-blue-600 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase hover:bg-blue-500 hover:text-white transition-all"
+
+              >
+
+                Suggest
+
+              </button>
+
+            </div>
+
+            <div className="space-y-2">
+
+              {formData.alternatives.map((alt, idx) => (
+
+                <div key={alt.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+
+                  {idx < 2 ? (
+
+                    <select
+
+                      value={alt.name}
+
+                      onChange={e => {
+
+                        const selected = getAlternativeOptions(formData, alt.name).find(option => option.name === e.target.value);
+
+                        const newAlts = [...formData.alternatives];
+
+                        newAlts[idx] = {...newAlts[idx], name: e.target.value, reason: selected?.reason || newAlts[idx].reason};
+
+                        setFormData({...formData, alternatives: newAlts});
+
+                      }}
+
+                      className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+
+                    >
+
+                      <option value="">{`Suggested alternative ${idx + 1}`}</option>
+
+                      {getAlternativeOptions(formData, alt.name).map(option => (
+
+                        <option key={`${idx}-${option.name}`} value={option.name}>{option.name}</option>
+
+                      ))}
+
+                    </select>
+
+                  ) : (
+
+                    <input
+
+                      type="text"
+
+                      placeholder="Manual alternative"
+
+                      value={alt.name}
+
+                      onChange={e => {
+
+                        const newAlts = [...formData.alternatives];
+
+                        newAlts[idx].name = e.target.value;
+
+                        setFormData({...formData, alternatives: newAlts});
+
+                      }}
+
+                      className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+
+                    />
+
+                  )}
+
+                  <input 
+
+                    type="text" 
+
+                    placeholder="السبب (مثل: بدون معدات، أسهل)"
+
+                    value={alt.reason}
+
+                    onChange={e => {
+
+                      const newAlts = [...formData.alternatives];
+
+                      newAlts[idx].reason = e.target.value;
+
+                      setFormData({...formData, alternatives: newAlts});
+
+                    }}
+
+                    className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+
+                  />
+
+                </div>
+
+              ))}
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <div className="p-4 border-t border-slate-200 flex gap-2">
+
+          <button onClick={handleSave} disabled={saving} className="flex-1 bg-emerald-500 text-white py-3 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all disabled:opacity-40">
+
+            {saving ? 'Saving...' : 'Save Changes'}
+
+          </button>
+
+          <button onClick={onClose} className="flex-1 border-2 border-slate-200 text-slate-400 py-3 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all">
+
+            Cancel
+
+          </button>
+
+        </div>
+
       </div>
-    </div>
-  );
-};
 
-export default ExerciseLibrary;
+    </div>
+
+  );
+
+}
+
+
+export function AddExerciseModal({ onClose, db, appId }) {
+
+  const [formData, setFormData] = useState({
+
+    name: '',
+
+    category: 'RESISTANCE',
+
+    muscleGroup: 'Other',
+
+    sets: '',
+
+    reps: '',
+
+    tempo: '',
+
+    gifUrl: '',
+
+    description: '',
+
+    alternatives: makeDefaultAlternatives()
+
+  });
+
+  const [saving, setSaving] = useState(false);
+
+
+
+  const handleAdd = async () => {
+
+    if (!formData.name.trim()) {
+
+      alert('Exercise name required');
+
+      return;
+
+    }
+
+    setSaving(true);
+
+    try {
+
+      await addDoc(collection(db,'artifacts',appId,'public','data','library'),{
+
+        name: formData.name,
+
+        category: formData.category || 'RESISTANCE',
+
+        muscleGroup: formData.muscleGroup || getMuscleGroup(formData.name) || 'Other',
+
+        sets: formData.sets || '',
+
+        reps: formData.reps || '',
+
+        tempo: formData.tempo || '',
+
+        gifUrl: formData.gifUrl || '',
+
+        description: formData.description || '',
+
+        alternatives: getFilledAlternatives(formData.alternatives),
+
+        createdAt: serverTimestamp()
+
+      });
+
+      alert('Exercise added ✅');
+
+      onClose();
+
+    } catch(e) {
+
+      console.error(e);
+
+      alert('Error adding exercise');
+
+    }
+
+    setSaving(false);
+
+  };
+
+
+
+  useBackButton(true, onClose);
+
+
+
+  return (
+
+    <div className="fixed inset-0 z-[998] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+
+      <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+
+        <div className="bg-slate-900 p-5 flex justify-between items-center">
+
+          <button onClick={onClose} className="text-slate-400 font-black text-sm">✕</button>
+
+          <span className="text-emerald-400 font-black text-base">Add Exercise</span>
+
+        </div>
+
+
+
+        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+
+          <input type="text" value={formData.name} onChange={e=>setFormData({...formData,name:e.target.value})} placeholder="Exercise Name *" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+          
+
+          <select value={formData.category} onChange={e=>setFormData({...formData,category:e.target.value})} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50">
+
+            <option value="">Select Category</option>
+
+            <option value="WARM-UP">WARM-UP</option>
+
+            <option value="ACTIVATION">ACTIVATION</option>
+
+            <option value="SKILL">SKILL</option>
+
+            <option value="RESISTANCE">RESISTANCE</option>
+
+            <option value="CARDIO">CARDIO</option>
+
+            <option value="COOL-DOWN">COOL-DOWN</option>
+
+          </select>
+
+
+
+          <select value={formData.muscleGroup} onChange={e=>setFormData({...formData,muscleGroup:e.target.value})} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50">
+
+            <option value="">Select Muscle Group</option>
+
+            {MUSCLE_GROUPS.map(m=><option key={m} value={m}>{m}</option>)}
+
+          </select>
+
+
+
+          <div className="grid grid-cols-2 gap-2">
+
+            <input type="number" value={formData.sets} onChange={e=>setFormData({...formData,sets:e.target.value})} placeholder="Default Sets" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 text-center"/>
+
+            <input type="text" value={formData.reps} onChange={e=>setFormData({...formData,reps:e.target.value})} placeholder="Default Reps" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 text-center"/>
+
+          </div>
+
+
+
+          <input type="text" value={formData.tempo} onChange={e=>setFormData({...formData,tempo:e.target.value})} placeholder="Tempo (e.g 2-0-2-0)" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+
+
+          <input type="text" value={formData.gifUrl} onChange={e=>setFormData({...formData,gifUrl:e.target.value})} placeholder="GIF URL (optional)" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+
+
+          <textarea value={formData.description} onChange={e=>setFormData({...formData,description:e.target.value})} placeholder="Description/Notes (optional)" rows={3} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50 resize-none"/>
+
+
+
+          <div className="border-t-2 border-slate-200 pt-4 mt-4">
+
+            <div className="flex items-center justify-between gap-2 mb-3">
+
+              <p className="text-xs font-black text-emerald-600 uppercase">Suggested Alternatives</p>
+
+              <button
+
+                type="button"
+
+                onClick={()=>setFormData({...formData, alternatives: applySuggestedAlternatives(formData, formData.alternatives)})}
+
+                className="bg-blue-100 text-blue-600 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase hover:bg-blue-500 hover:text-white transition-all"
+
+              >
+
+                Suggest
+
+              </button>
+
+            </div>
+
+            <div className="space-y-2">
+
+              {normalizeAlternatives(formData.alternatives).map((alt, idx) => (
+
+                <div key={alt.id} className="grid grid-cols-2 gap-2">
+
+                  {idx < 2 ? (
+
+                    <select
+
+                      value={alt.name}
+
+                      onChange={e=>{
+
+                        const selected = getAlternativeOptions(formData, alt.name).find(option => option.name === e.target.value);
+
+                        const alternatives = normalizeAlternatives(formData.alternatives);
+
+                        alternatives[idx] = {...alternatives[idx], name:e.target.value, reason:selected?.reason || alternatives[idx].reason};
+
+                        setFormData({...formData, alternatives});
+
+                      }}
+
+                      className="p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+
+                    >
+
+                      <option value="">{`Suggested ${idx + 1}`}</option>
+
+                      {getAlternativeOptions(formData, alt.name).map(option => (
+
+                        <option key={`${idx}-${option.name}`} value={option.name}>{option.name}</option>
+
+                      ))}
+
+                    </select>
+
+                  ) : (
+
+                    <input
+
+                      type="text"
+
+                      placeholder="Manual alternative"
+
+                      value={alt.name}
+
+                      onChange={e=>{
+
+                        const alternatives = normalizeAlternatives(formData.alternatives);
+
+                        alternatives[idx] = {...alternatives[idx], name:e.target.value};
+
+                        setFormData({...formData, alternatives});
+
+                      }}
+
+                      className="p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+
+                    />
+
+                  )}
+
+                  <input
+
+                    type="text"
+
+                    placeholder="Reason"
+
+                    value={alt.reason}
+
+                    onChange={e=>{
+
+                      const alternatives = normalizeAlternatives(formData.alternatives);
+
+                      alternatives[idx] = {...alternatives[idx], reason:e.target.value};
+
+                      setFormData({...formData, alternatives});
+
+                    }}
+
+                    className="p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+
+                  />
+
+                </div>
+
+              ))}
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <div className="p-4 border-t border-slate-200 flex gap-2">
+
+          <button onClick={handleAdd} disabled={saving} className="flex-1 bg-emerald-500 text-white py-3 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all disabled:opacity-40">
+
+            {saving ? 'Adding...' : '+ Add Exercise'}
+
+          </button>
+
+          <button onClick={onClose} className="flex-1 border-2 border-slate-200 text-slate-400 py-3 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all">
+
+            Cancel
+
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  );
+
+}

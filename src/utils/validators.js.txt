@@ -232,6 +232,8 @@ export function getAlternativeOptions(exercise = {}, currentName = '', libraryDa
 
 }
 
+
+
 export function applySuggestedAlternatives(exercise = {}, currentAlternatives = [], libraryData = []) {
 
   const current = normalizeAlternatives(currentAlternatives);
@@ -247,4 +249,7 @@ export function applySuggestedAlternatives(exercise = {}, currentAlternatives = 
     current[2] || { id: '3', name: '', reason: '' }
 
   ]);
+
 }
+
+

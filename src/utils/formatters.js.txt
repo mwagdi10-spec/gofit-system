@@ -107,11 +107,53 @@ export function splitTextByLinks(text = '') {
   return parts;
 
 }
-export function getExerciseLink(exercise = {}) {
-  return exercise.link || exercise.url || exercise.videoUrl || exercise.gifUrl || '';
+
+
+
+function LinkifiedText({ text, className = '' }) {
+
+  return (
+
+    <span className={className}>
+
+      {splitTextByLinks(text).map((part, idx) => {
+
+        if (part.type !== 'link') return <React.Fragment key={idx}>{part.value}</React.Fragment>;
+
+        const href = part.value.startsWith('http') ? part.value : `https://${part.value}`;
+
+        return (
+
+          <a key={idx} href={href} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} className="text-blue-600 underline decoration-2 underline-offset-2 break-all">
+
+            {part.value}
+
+          </a>
+
+        );
+
+      })}
+
+    </span>
+
+  );
+
 }
 
+
+
+export function getExerciseLink(exercise = {}) {
+
+  return exercise.link || exercise.url || exercise.videoUrl || exercise.gifUrl || '';
+
+}
+
+
+
 export function normalizeHref(url = '') {
+
   if (!url) return '';
+
   return url.startsWith('http') ? url : `https://${url}`;
+
 }

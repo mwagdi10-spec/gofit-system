@@ -16,6 +16,12 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
   const [editingExercise, setEditingExercise] = useState(null);
   const [menuOpen, setMenuOpen]               = useState(false);
   const [showProgramBuilder, setShowProgramBuilder] = useState(false);
+  const [planMeta, setPlanMeta]               = useState(null);
+  const {plan, setPlan, selectedDayId, setSelectedDayId,
+    selectedDay,
+    addWeek, removeWeek, renameWeek,
+    addDay,  removeDay,  renameDay,
+  } = useWeeklyPlan(planMeta);
   const [clientSearch, setClientSearch]       = useState('');
   const [clientGoalFilter, setClientGoalFilter] = useState('ALL');
   const [clientLevelFilter, setClientLevelFilter] = useState('ALL');
@@ -30,6 +36,28 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
   const sub = 'text-slate-500';
   const inp = 'bg-slate-50 border-slate-200';
   const rowbg = 'bg-slate-50 border-slate-100';
+
+  // Load planMeta per client from Firestore
+  useEffect(()=>{
+    if(!targetClient) return;
+    const ref = doc(db,'artifacts',appId,'public','data','planMeta',targetClient);
+    const unsub = onSnapshot(ref, snap=>{
+      setPlanMeta(snap.exists() ? snap.data() : null);
+    });
+    return ()=>unsub();
+  },[targetClient,db,appId]);
+
+  // Sync selectedDay.title → sessionName
+  useEffect(()=>{
+    if(selectedDay) setSessionName(selectedDay.title);
+  },[selectedDay]);
+
+  // Persist plan to Firestore on change
+  useEffect(()=>{
+    if(!targetClient || !plan?.weeks) return;
+    const ref = doc(db,'artifacts',appId,'public','data','planMeta',targetClient);
+    setDoc(ref, plan, {merge:true});
+  },[plan,targetClient,db,appId]);
 
   // Load library
   useEffect(()=>{
@@ -202,11 +230,6 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
       });
     }
     alert(`Copied ${source.length} exercises ✅`);
-  };
-
-  const printProgram = () => {
-    if(!targetClient) { alert('Select a client first'); return; }
-    window.print();
   };
 
   const tabButtons = [
@@ -637,38 +660,22 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
             <div className="flex gap-2">
               <button onClick={()=>setShowTemplate(true)} className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">📋 Full Day Template</button>
               <button onClick={()=>{setNewEx({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'**NEW**',alternatives:makeDefaultAlternatives()});}} className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">➕ New Exercise</button>
-              <button onClick={printProgram} className="flex-1 bg-slate-200 text-slate-700 py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">Print</button>
             </div>
           </div>
 
           <div className="space-y-5">
-            <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
-              <div className={`flex items-center justify-between gap-3 border-b pb-3 mb-3 ${tx} border-slate-200`}>
-                <h3 className="font-black text-base text-left">Calendar View</h3>
-                <button onClick={addNextDay} className="w-9 h-9 rounded-xl bg-emerald-500 text-white font-black text-lg shadow-md active:scale-95 transition-all" title="Add next day">+</button>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {clientDays.length>0?clientDays.map(day=>{
-                  const dayExercises = workouts.filter(w=>w.assignedTo===targetClient&&w.day===day);
-                  const muscleMix = [...new Set(dayExercises.map(ex=>getMuscleGroup(ex.name)).filter(Boolean))].slice(0,2).join(', ') || 'Mixed';
-                  return (
-                    <button key={day} onClick={()=>setSessionName(day)} className={`relative p-3 rounded-2xl border-2 text-left transition-all ${sessionName===day?'border-emerald-500 bg-emerald-50':'border-slate-100 bg-slate-50 hover:border-emerald-200'}`}>
-                      <span
-                        onClick={e=>{e.stopPropagation();deleteDay(day);}}
-                        className="absolute right-2 top-2 w-6 h-6 rounded-lg bg-red-50 text-red-500 border border-red-100 flex items-center justify-center text-xs font-black hover:bg-red-500 hover:text-white transition-all"
-                        title={`Delete ${day}`}
-                      >
-                        ×
-                      </span>
-                      <p className="font-black text-sm text-slate-900">{day}</p>
-                      <p className="text-[10px] font-black text-slate-500">{dayExercises.length} exercises</p>
-                      <p className="text-[10px] font-black text-emerald-600 truncate">{muscleMix}</p>
-                    </button>
-                  );
-                }):(
-                  <p className={`col-span-full text-xs font-black ${sub} text-center py-6`}>Select a client or apply a template to build the calendar</p>
-                )}
-              </div>
+            <div className={`${bg} border-2 rounded-[2.5rem] shadow-xl overflow-hidden`}>
+              <WeeklySidebar
+                plan={plan}
+                selectedDayId={selectedDayId}
+                onSelectDay={setSelectedDayId}
+                onAddWeek={addWeek}
+                onAddDay={(weekId)=>{ addDay(weekId); }}
+                onRemoveDay={(weekId,dayId)=>{ removeDay(weekId,dayId); }}
+                onRenameDay={renameDay}
+                onRemoveWeek={removeWeek}
+                onRenameWeek={renameWeek}
+              />
             </div>
 
             <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl flex flex-col h-auto md:h-[450px]`}>

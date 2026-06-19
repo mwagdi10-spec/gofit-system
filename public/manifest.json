@@ -4,7 +4,7 @@
   "description": "Your personal fitness trainer app",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
+  "background_color": "#4c74d4",
   "theme_color": "#10b981",
   "orientation": "portrait",
   "icons": [

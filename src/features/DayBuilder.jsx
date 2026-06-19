@@ -7,7 +7,7 @@ import { normalizeAlternatives, getFilledAlternatives, getAlternativeOptions, ap
 import { useBackButton } from '../hooks/useBackButton';
 import { LinkifiedText } from '../components/shared/LinkifiedText';
 
-export function DayTemplateModal({ onClose, db, appId, libraryData, targetClient, sessionName }) {
+export function DayTemplateModal({ onClose, db, appId, libraryData, targetClient, sessionName, selectedWeek }) {
 
   const [selected, setSelected] = useState([]);
 
@@ -53,7 +53,7 @@ export function DayTemplateModal({ onClose, db, appId, libraryData, targetClient
 
         sets:'3', reps:'10', tempo:'', coachNote:'', alternatives: getFilledAlternatives(ex.alternatives?.length ? ex.alternatives : suggestAlternatives(ex)),
 
-        assignedTo: targetClient, day: sessionName, orderIndex: base + i
+        assignedTo: targetClient, week: selectedWeek || 'Week 1', day: sessionName, orderIndex: base + i
 
       });
 
@@ -918,13 +918,10 @@ export function ProgramBuilder({ onClose }) {
                 onClick={handleGenerateProgram}
 
                 className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-black hover:bg-emerald-600 transition-all"
-
               >
 
                 إنشاء البرنامج
-
               </button>
-
             </div>
 
           </form>
@@ -1052,95 +1049,49 @@ export function ProgramBuilder({ onClose }) {
  
 
           {/* Weekly Plan */}
-
           <div className="mb-6">
-
             <h4 className="text-xl font-black text-slate-900 mb-4">جدول الأسبوع</h4>
-
             <div className="space-y-3">
-
               {Object.entries(generatedProgram.weeklyPlan).map(([day, info]) => (
-
                 <div key={day} className="bg-slate-50 rounded-xl p-4 border-2 border-slate-200">
-
                   <div className="flex items-center justify-between mb-3">
-
                     <h5 className="font-black text-slate-900">{day}</h5>
-
                     <span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-xs font-black">
-
                       {info.muscleGroup}
-
                     </span>
-
                   </div>
-
                   <div className="text-sm text-slate-600">
-
                     <p className="font-black mb-2">التمارين:</p>
-
                     <ul className="list-disc list-inside space-y-1">
-
                       {info.exercises.map(ex => <li key={ex}>{ex}</li>)}
-
                     </ul>
-
                   </div>
-
                 </div>
-
               ))}
-
             </div>
-
           </div>
-
- 
 
           {/* Action Buttons */}
-
           <div className="flex gap-3 pt-4">
-
             <button
-
               onClick={() => {
-
                 const text = `برنامج التدريب NASM OPT\n\n${generatedProgram.name}\n\nالمرحلة: ${generatedProgram.phaseInfo.level}\nالمدة: ${generatedProgram.duration}\n\n${Object.entries(generatedProgram.weeklyPlan).map(([day, info]) => `${day}: ${info.muscleGroup}`).join('\n')}`;
-
                 navigator.clipboard.writeText(text);
-
                 alert('تم نسخ البرنامج!');
-
               }}
-
               className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-black hover:bg-blue-600 transition-all"
-
             >
-
               نسخ البرنامج
-
             </button>
-
             <button
-
               onClick={onClose}
-
               className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-black hover:bg-emerald-600 transition-all"
-
             >
-
               إغلاق
-
             </button>
-
           </div>
-
         </div>
-
       </div>
-
     );
-
   }
-
 }

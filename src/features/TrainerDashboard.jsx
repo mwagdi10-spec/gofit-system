@@ -1,6 +1,6 @@
-// ═══════════════════════════════════════════════════════════════════════════════
+﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // TrainerDashboard
-// ═══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
   const [activeTab, setActiveTab]             = useState('overview');
   const [targetClient, setTargetClient]       = useState('');
@@ -47,7 +47,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
     return ()=>unsub();
   },[targetClient,db,appId]);
 
-  // Sync selectedDay.title → sessionName
+  // Sync selectedDay.title â†’ sessionName
   useEffect(()=>{
     if(selectedDay) setSessionName(selectedDay.title);
   },[selectedDay]);
@@ -157,7 +157,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
     return {
       adherence,
       completed: logs.length,
-      topMuscle:Object.entries(topMuscles).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—',
+      topMuscle:Object.entries(topMuscles).sort((a,b)=>b[1]-a[1])[0]?.[0] || 'â€”',
       atRisk: rows.filter(m=>m.daysSinceLast>=7 || m.adherence<50).length,
     };
   },[clientNames, workouts, logs]);
@@ -185,7 +185,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
         orderIndex:base+i,
       });
     }
-    alert(`Assigned ${items.length} exercises from ${templateName} ✅`);
+    alert(`Assigned ${items.length} exercises from ${templateName} âœ…`);
   };
 
   const applySmartProgram = async () => {
@@ -200,7 +200,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
     const items = buildExpandedTemplateItems(
       selectedTemplate,
       libraryData,
-      [injuries ? `Injury note: ${client.injuries}` : '', `Auto-generated from ${selectedTemplate}`].filter(Boolean).join(' · ')
+      [injuries ? `Injury note: ${client.injuries}` : '', `Auto-generated from ${selectedTemplate}`].filter(Boolean).join(' Â· ')
     );
     const base = Date.now();
     for(let i=0;i<items.length;i++){
@@ -212,7 +212,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
         orderIndex:base+i,
       });
     }
-    alert(`Smart program generated: ${selectedTemplate} (${items.length} exercises) ✅`);
+    alert(`Smart program generated: ${selectedTemplate} (${items.length} exercises) âœ…`);
   };
 
   const copyProgram = async () => {
@@ -229,7 +229,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
         orderIndex:base+i,
       });
     }
-    alert(`Copied ${source.length} exercises ✅`);
+    alert(`Copied ${source.length} exercises âœ…`);
   };
 
   const tabButtons = [
@@ -237,8 +237,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
     {id:'clients', label:'Clients'},
     {id:'library', label:'Library'},
     {id:'plan', label:'Plan'},
-    {id:'analytics', label:'Analytics'},
-    {id:'inbox', label:'Inbox'}
+    {id:'analytics', label:'Analytics'}
   ];
 
   return(
@@ -289,7 +288,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                     <div className="h-1.5 rounded-full w-full bg-slate-100">
                       <div className="h-full rounded-full transition-all" style={{width:`${metrics.adherence}%`, backgroundColor: PHASE_COLORS[clientPhase]}}/>
                     </div>
-                    <span className={`text-[9px] font-black ${sub}`}>4-week adherence {metrics.adherence}% · top {metrics.topMuscle}</span>
+                    <span className={`text-[9px] font-black ${sub}`}>4-week adherence {metrics.adherence}% Â· top {metrics.topMuscle}</span>
                   </div>
                 );
               })}
@@ -374,7 +373,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black text-sm shrink-0" style={{backgroundColor: PHASE_COLORS[clientPhase]}}>{clientPhase}</div>
                     <div className="text-left flex-1 min-w-0">
                       <p className="font-black text-sm text-slate-900">{titleCase(client.name)}</p>
-                      <p className="text-xs text-slate-500 truncate">{client.goal || 'No goal'} · {client.level || NASM_OPT_PHASES[clientPhase]?.phase}</p>
+                      <p className="text-xs text-slate-500 truncate">{client.goal || 'No goal'} Â· {client.level || NASM_OPT_PHASES[clientPhase]?.phase}</p>
                     </div>
                     <div className="grid grid-cols-3 gap-2 flex-1">
                       <div className="text-center bg-white rounded-xl p-2 border border-slate-100">
@@ -386,7 +385,7 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                         <p className="text-[9px] font-black text-slate-400 uppercase">Done</p>
                       </div>
                       <div className="text-center bg-white rounded-xl p-2 border border-slate-100">
-                        <p className="text-sm font-black text-emerald-500">{metrics.daysSinceLast===999?'—':`${metrics.daysSinceLast}d`}</p>
+                        <p className="text-sm font-black text-emerald-500">{metrics.daysSinceLast===999?'â€”':`${metrics.daysSinceLast}d`}</p>
                         <p className="text-[9px] font-black text-slate-400 uppercase">Last</p>
                       </div>
                     </div>
@@ -447,8 +446,8 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                           <div key={ex.id} className="p-3 rounded-xl bg-white border-2 border-slate-100 hover:border-emerald-300 transition-all flex justify-between items-center group">
                             <div>
                               <p className="font-black text-sm text-slate-900">{formatName(ex.name)}</p>
-                              <p className="text-[10px] text-slate-500 font-black uppercase">{getExerciseMuscle(ex)} · {ex.category || 'RESISTANCE'}</p>
-                              {ex.gifUrl&&<p className="text-[10px] text-blue-600 font-black">✓ GIF</p>}
+                              <p className="text-[10px] text-slate-500 font-black uppercase">{getExerciseMuscle(ex)} Â· {ex.category || 'RESISTANCE'}</p>
+                              {ex.gifUrl&&<p className="text-[10px] text-blue-600 font-black">âœ“ GIF</p>}
                             </div>
                             <div className="flex gap-1">
                               <button onClick={()=>setEditingExercise(ex)} className="text-blue-400 font-black text-[10px] bg-blue-50 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-blue-500 hover:text-white">Edit</button>
@@ -557,11 +556,11 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                   });
                   count++;
                 }
-                alert(`✅ Imported ${count} exercises from CSV`);
+                alert(`âœ… Imported ${count} exercises from CSV`);
                 e.target.value = '';
               }} className="hidden" id="csvInput"/>
               <label htmlFor="csvInput" className="cursor-pointer block">
-                <p className="font-black text-sm text-slate-900 mb-2">📊 Import from CSV</p>
+                <p className="font-black text-sm text-slate-900 mb-2">ðŸ“Š Import from CSV</p>
                 <p className="text-xs text-slate-500 mb-3">Click to upload or drag & drop</p>
                 <p className="text-[10px] text-slate-400">Format: name, category, musclegroup, sets, reps, tempo, coachnote, gifurl, alt1, alt1reason, alt2, alt2reason, alt3, alt3reason</p>
               </label>
@@ -655,11 +654,11 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
               const libEx=libraryData.find(l=>l.name===newEx.name);
               await addDoc(collection(db,'artifacts',appId,'public','data','workouts'),{...newEx,muscleGroup:libEx ? getExerciseMuscle(libEx) : newEx.muscleGroup || getMuscleGroup(newEx.name) || 'Other',alternatives:getFilledAlternatives(newEx.alternatives),gifUrl:libEx?.gifUrl||'',assignedTo:targetClient,day:sessionName,orderIndex:Date.now()});
               setNewEx({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'',alternatives:makeDefaultAlternatives()});
-              alert('Assigned ✅');
+              alert('Assigned âœ…');
             }} className="w-full bg-slate-900 text-emerald-400 py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all">Assign Workout +</button>
             <div className="flex gap-2">
-              <button onClick={()=>setShowTemplate(true)} className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">📋 Full Day Template</button>
-              <button onClick={()=>{setNewEx({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'**NEW**',alternatives:makeDefaultAlternatives()});}} className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">➕ New Exercise</button>
+              <button onClick={()=>setShowTemplate(true)} className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">ðŸ“‹ Full Day Template</button>
+              <button onClick={()=>{setNewEx({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'**NEW**',alternatives:makeDefaultAlternatives()});}} className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">âž• New Exercise</button>
             </div>
           </div>
 
@@ -693,19 +692,6 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
             <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-black text-sm border-b pb-3 text-left uppercase text-emerald-500 border-slate-200 flex-1">Performance Archive</h3>
-                {analyticsClient && archiveGroups.length > 0 && (
-                  <button
-                    onClick={async () => {
-                      if (!window.confirm(`حذف كل التمارين ليوم ${archiveGroups[0][0]}؟`)) return;
-                      const deleted = await deleteLogsByDate(new Date(archiveGroups[0][0]), db, appId);
-                      alert(`تم حذف ${deleted} تمرين ✅`);
-                    }}
-                    className="ml-2 text-xs bg-red-500 text-white px-3 py-1.5 rounded-lg font-black hover:bg-red-600 transition-all"
-                    title="حذف كل التمارين في اليوم الأول"
-                  >
-                    🗑️ اليوم
-                  </button>
-                )}
               </div>
               {!analyticsClient
                 ?<p className={`text-xs font-black ${sub} text-center py-8`}>Select a client to view history</p>
@@ -721,14 +707,15 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                deleteLogsByDate(new Date(date), db, appId).then(count => {
-                                  alert(`تم حذف ${count} تمرين ✅`);
-                                });
+                                if(!window.confirm(`Delete ${entries.length} log(s) only for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}?`)) return;
+                                deleteLogsByDate(new Date(date), db, appId, analyticsClient).then(count => {
+                                  alert(`Deleted ${count} log(s) for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}`);
+                                }).catch(err => alert(err.message));
                               }}
                               className="bg-red-50 text-red-600 border border-red-100 px-2 py-1 rounded-lg text-[10px] font-black hover:bg-red-500 hover:text-white transition-all"
-                              title="حذف اليوم بالكامل"
+                              title="Ø­Ø°Ù Ø§Ù„ÙŠÙˆÙ… Ø¨Ø§Ù„ÙƒØ§Ù…Ù„"
                             >
-                              🗑️
+                              ðŸ—‘ï¸
                             </button>
                             <span className="justify-self-end bg-blue-50 text-blue-600 border border-blue-100 px-3 py-1.5 rounded-lg text-[10px] font-black">EDIT</span>
                           </div>
@@ -743,26 +730,27 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                                     {e.isAlternative&&<span className="text-[9px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded shrink-0">ALT</span>}
                                   </div>
                                   {e.isAlternative&&e.originalExerciseName&&(
-                                    <p className="text-[9px] text-slate-400 font-bold mb-1 truncate">بديل من: {formatName(e.originalExerciseName)}</p>
+                                    <p className="text-[9px] text-slate-400 font-bold mb-1 truncate">Ø¨Ø¯ÙŠÙ„ Ù…Ù†: {formatName(e.originalExerciseName)}</p>
                                   )}
                                   <div className="flex justify-between items-center mt-1">
                                     <p className={`text-[9px] ${sub}`}>{e.setsData?.length||0} sets</p>
                                     {e.setsData&&e.setsData.length>0&&<p className="text-[9px] font-black text-emerald-600">{Math.max(...e.setsData.map(s=>parseFloat(s.weight)||0))}kg</p>}
                                     {e.rpe&&<p className="text-[9px] font-black text-amber-600">RPE {e.rpe}</p>}
-                                    {e.isPR&&<span className="text-xs">🏆</span>}
+                                    {e.isPR&&<span className="text-xs">ðŸ†</span>}
                                   </div>
                                 </div>
                                 <button
                                   onClick={(ev) => {
                                     ev.stopPropagation();
-                                    deleteLogsByExerciseAndDate(e.exerciseName, new Date(date), db, appId).then(count => {
-                                      alert(`تم حذف ${count} تمرين ✅`);
-                                    });
+                                    if(!window.confirm(`Delete ${formatName(e.exerciseName)} only for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}?`)) return;
+                                    deleteLogsByExerciseAndDate(e.exerciseName, new Date(date), db, appId, analyticsClient).then(count => {
+                                      alert(`Deleted ${count} log(s) for ${formatName(e.exerciseName)} on ${date}`);
+                                    }).catch(err => alert(err.message));
                                   }}
                                   className="ml-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-700"
-                                  title="حذف هذا التمرين من اليوم"
+                                  title="Ø­Ø°Ù Ù‡Ø°Ø§ Ø§Ù„ØªÙ…Ø±ÙŠÙ† Ù…Ù† Ø§Ù„ÙŠÙˆÙ…"
                                 >
-                                  🗑️
+                                  ðŸ—‘ï¸
                                 </button>
                               </div>
                             ))}
@@ -815,18 +803,6 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
         </div>
       )}
 
-      {/* INBOX */}
-      {activeTab==='inbox'&&(
-        <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
-          <h3 className={`font-black text-base border-b pb-3 mb-4 ${tx} border-slate-200`}>Client Messages</h3>
-          <div className="text-center py-20 text-slate-400 font-black">
-            <p className="text-3xl mb-3">📮</p>
-            <p>No messages yet</p>
-            <p className="text-sm mt-2">Messages from clients will appear here</p>
-          </div>
-        </div>
-      )}
-
       {showAddClient&&<AddNewClientModal onClose={()=>setShowAddClient(false)} db={db} appId={appId}/>}
       {showAddExercise&&<AddExerciseModal onClose={()=>setShowAddExercise(false)} db={db} appId={appId}/>}
       {editingExercise&&<EditExerciseModal exercise={editingExercise} onClose={()=>setEditingExercise(null)} db={db} appId={appId} collectionName="library"/>}
@@ -834,3 +810,4 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
     </div>
   );
 }
+

@@ -1,7 +1,8 @@
 const TABS = [
-  { name: 'Home',    label: 'Home',    icon: '⌂' },
-  { name: 'Plan',    label: 'Plan',    icon: '▦' },
-  { name: 'Profile', label: 'Profile', icon: '◉' },
+  { name: 'Home',     label: 'Home',     icon: '⌂' },
+  { name: 'Plan',     label: 'Plan',     icon: '▦' },
+  { name: 'Progress', label: 'Progress', icon: '📈' },
+  { name: 'Profile',  label: 'Profile',  icon: '◉' },
 ];
 
 export default function BottomNav({ navigate, current }) {

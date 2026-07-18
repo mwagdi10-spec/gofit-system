@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, APP_ID } from '../services/firebase/config';
 import BottomNav from '../components/BottomNav';
+import { SendNoteBox } from '../components/shared/SendNoteBox';
 
 const GOALS   = ['Muscle Gain', 'Fat Loss', 'Strength', 'Endurance'];
 const METRICS = [
@@ -132,6 +133,9 @@ export default function ProfileScreen({ navigate, current, user = {}, identifier
             <p className="text-white text-lg font-bold">{user.goal || '—'}</p>
           )}
         </div>
+
+        {/* Send Note to Coach */}
+        {!editing && <SendNoteBox identifier={identifier} context="profile" />}
       </div>
       <BottomNav navigate={navigate} current={current} />
     </div>

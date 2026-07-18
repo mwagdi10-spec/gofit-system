@@ -81,6 +81,8 @@ export function AddNewClientModal({ onClose, db, appId }) {
 
     daysPerWeek: '',
 
+    weeklyCardioTarget: '',
+
     injuries: '',
 
     weight: '',
@@ -133,6 +135,8 @@ export function AddNewClientModal({ onClose, db, appId }) {
 
         daysPerWeek: formData.daysPerWeek ? parseInt(formData.daysPerWeek) : 0,
 
+        weeklyCardioTarget: formData.weeklyCardioTarget ? parseInt(formData.weeklyCardioTarget) : 0,
+
         injuries: formData.injuries || '',
 
         weight: formData.weight || '',
@@ -144,6 +148,8 @@ export function AddNewClientModal({ onClose, db, appId }) {
         progressPhotos: formData.progressPhotos || '',
 
         coachNotes: formData.coachNotes || '',
+
+        coachNotesUpdatedAt: serverTimestamp(),
 
         createdAt: serverTimestamp()
 
@@ -246,6 +252,14 @@ export function AddNewClientModal({ onClose, db, appId }) {
 
 
           <input type="number" value={formData.daysPerWeek} onChange={e=>setFormData({...formData,daysPerWeek:e.target.value})} placeholder="Days/Week" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+          <div className="border-l-4 border-blue-400 pl-3">
+
+            <label className="text-xs font-black text-blue-500 uppercase mb-2 block">Weekly Cardio Target (mins)</label>
+
+            <input type="number" value={formData.weeklyCardioTarget} onChange={e=>setFormData({...formData,weeklyCardioTarget:e.target.value})} placeholder="e.g 150" className="w-full p-3 border-2 border-blue-200 rounded-xl font-black text-sm outline-none focus:border-blue-500 bg-blue-50"/>
+
+          </div>
 
           <input type="text" value={formData.injuries} onChange={e=>setFormData({...formData,injuries:e.target.value})} placeholder="Injuries/Notes" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
 

@@ -2,11 +2,11 @@ import { getMuscleGroup, getExerciseMuscle } from './formatters';
 
 export const makeDefaultAlternatives = () => [
 
-  { id: '1', name: '', reason: '' },
+  { id: '1', name: '', reason: '', gifUrl: '', videoUrl: '' },
 
-  { id: '2', name: '', reason: '' },
+  { id: '2', name: '', reason: '', gifUrl: '', videoUrl: '' },
 
-  { id: '3', name: '', reason: '' }
+  { id: '3', name: '', reason: '', gifUrl: '', videoUrl: '' }
 
 ];
 
@@ -24,7 +24,11 @@ export function normalizeAlternatives(alternatives = []) {
 
       name: alt.name || '',
 
-      reason: alt.reason || ''
+      reason: alt.reason || '',
+
+      gifUrl: alt.gifUrl || '',
+
+      videoUrl: alt.videoUrl || ''
 
     }));
 
@@ -134,7 +138,11 @@ export function suggestAlternatives(exercise = {}, libraryData = []) {
 
       name: item.name,
 
-      reason: (item.category || category) === category ? `${category} alternative` : `${muscleGroup} alternative`
+      reason: (item.category || category) === category ? `${category} alternative` : `${muscleGroup} alternative`,
+
+      gifUrl: item.gifUrl || '',
+
+      videoUrl: item.videoUrl || ''
 
     }));
 
@@ -216,7 +224,11 @@ export function getAlternativeOptions(exercise = {}, currentName = '', libraryDa
 
       name: item.name,
 
-      reason: (item.category || '') === category ? `${category} alternative` : `${getExerciseMuscle(item)} alternative`
+      reason: (item.category || '') === category ? `${category} alternative` : `${getExerciseMuscle(item)} alternative`,
+
+      gifUrl: item.gifUrl || '',
+
+      videoUrl: item.videoUrl || ''
 
     }));
 

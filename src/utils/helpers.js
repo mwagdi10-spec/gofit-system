@@ -5,7 +5,7 @@ import { normalizeAlternatives, applySuggestedAlternatives } from './validators'
 export function getTemplateDefaults(muscleGroup = 'Other') {
   const cardio = muscleGroup === 'Cardio';
   const mobility = muscleGroup === 'Mobility';
-  const activation = ['Core', 'Glutes', 'Mobility'].includes(muscleGroup);
+  const activation = ['Abs', 'Glutes', 'Mobility'].includes(muscleGroup);
   return {
     category: cardio ? 'CARDIO' : mobility ? 'WARM-UP' : activation ? 'ACTIVATION' : 'RESISTANCE',
     sets: cardio ? '1' : '3',
@@ -14,8 +14,16 @@ export function getTemplateDefaults(muscleGroup = 'Other') {
   };
 }
 
+// معيار NASM: تقسيم الحجم الأسبوعي للكارديو على عدد أيام تمرين العميل
+export function getSuggestedCardioMinutes(client = {}) {
+  const weekly = Number(client?.weeklyCardioTarget) || 0;
+  const days = Number(client?.daysPerWeek) || 0;
+  if (!weekly || !days) return null;
+  return Math.round(weekly / days);
+}
+
 export function normalizeTemplateExercise(item = {}) {
-  const muscleGroup = item.muscleGroup || getMuscleGroup(item.name) || (item.category === 'CARDIO' ? 'Cardio' : 'Other');
+  const muscleGroup = item.muscleGroup || getMuscleGroup(item.name) || 'Other';
   return {
     ...item,
     muscleGroup,
@@ -41,6 +49,7 @@ export function pickTemplateExerciseFromLibrary(libraryData = [], muscleGroup = 
       tempo: match.tempo || defaults.tempo,
       coachNote: '',
       gifUrl: match.gifUrl || '',
+      videoUrl: match.videoUrl || '',
       alternatives: match.alternatives
     });
   }
@@ -51,12 +60,13 @@ export function pickTemplateExerciseFromLibrary(libraryData = [], muscleGroup = 
   return normalizeTemplateExercise({
     name: fallbackName,
     category: defaults.category,
-    muscleGroup,
+    muscleGroup: muscleGroup === 'Cardio' ? 'Other' : muscleGroup,
     sets: defaults.sets,
     reps: defaults.reps,
     tempo: defaults.tempo,
     coachNote: '',
-    gifUrl: ''
+    gifUrl: '',
+    videoUrl: ''
   });
 }
 
@@ -74,7 +84,7 @@ export function buildExpandedTemplateItems(templateName, libraryData = [], coach
   days.forEach(day => {
     const dayItems = grouped[day] || [];
     const targetCount = Math.max(dayItems.length, Math.ceil(TEMPLATE_MAX_EXERCISES / Math.max(days.length, 1)));
-    const targets = TEMPLATE_SPLIT_TARGETS[day] || ['Chest', 'Back', 'Quads', 'Core'];
+    const targets = TEMPLATE_SPLIT_TARGETS[day] || ['Chest', 'Back', 'Upper Legs', 'Abs'];
     const expanded = [...dayItems];
     let targetIdx = 0;
     while (expanded.length < targetCount && result.length + expanded.length < TEMPLATE_MAX_EXERCISES) {

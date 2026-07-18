@@ -9,33 +9,72 @@ export function getMuscleGroup(exerciseName = '') {
 
   const n = exerciseName.toLowerCase();
 
-  if (/bike|run|treadmill|elliptical|rower|interval|cardio|climber|jumping jack|burpee/i.test(n)) return 'Cardio';
-
   if (/bench|chest|fly|pec|push.?up|dip/i.test(n))                              return 'Chest';
 
   if (/row|pull|lat|deadlift|back|chin/i.test(n))                               return 'Back';
 
-  if (/squat|leg press|lunge|quad|extension/i.test(n))                          return 'Quads';
+  if (/squat|leg press|lunge|quad|hamstring|romanian|rdl|nordic|leg extension|leg curl/i.test(n)) return 'Upper Legs';
 
-  if (/hamstring|curl|romanian|rdl|nordic/i.test(n))                            return 'Hamstrings';
+  if (/calf|calves/i.test(n))                                                   return 'Lower Legs';
 
-  if (/plank|crunch|ab|core|sit.?up|cable crunch|wheel/i.test(n))               return 'Core';
+  if (/glute|hip thrust|bridge|kickback/i.test(n))                              return 'Glutes';
+
+  if (/plank|crunch|\bab\b|abs|core|sit.?up|cable crunch|wheel/i.test(n))       return 'Abs';
 
   if (/shoulder|overhead|press|lateral raise|front raise|face pull/i.test(n))   return 'Shoulders';
 
-  if (/bicep|tricep|curl|arm|pushdown|extension/i.test(n))                      return 'Arms';
+  if (/bicep|curl/i.test(n))                                                    return 'Biceps';
 
-  if (/glute|hip thrust|bridge|kickback/i.test(n))                              return 'Glutes';
+  if (/tricep|pushdown|skull.?crusher|kickback.?tricep/i.test(n))               return 'Triceps';
+
+  if (/forearm|wrist curl|grip/i.test(n))                                       return 'Forearms';
 
   return null;
 
 }
 
 
+export function getEquipment(exerciseName = '') {
+
+  const n = exerciseName.toLowerCase();
+
+  if (/ez.?curl|ez.?bar/i.test(n))                                    return 'EZ Curl Bar';
+
+  if (/barbell/i.test(n))                                             return 'Barbell';
+
+  if (/dumbbell|\bdb\b/i.test(n))                                     return 'Dumbbell';
+
+  if (/kettlebell|\bkb\b/i.test(n))                                   return 'Kettlebell';
+
+  if (/band/i.test(n))                                                return 'Bands';
+
+  if (/stability ball|exercise ball|swiss ball/i.test(n))             return 'Exercise Ball';
+
+  if (/plate/i.test(n))                                               return 'Weight Plate';
+
+  if (/pull.?up bar|chin.?up bar/i.test(n))                           return 'Pullup Bar';
+
+  if (/treadmill|elliptical|rower|bike|stairmaster|climber/i.test(n)) return 'Cardio Machine';
+
+  if (/machine|cable|smith/i.test(n))                                 return 'Strength Machine';
+
+  if (/\bbench\b/i.test(n))                                           return 'Bench';
+
+  return null;
+
+}
+
 
 export function getExerciseMuscle(exercise = {}) {
 
   return exercise.muscleGroup || getMuscleGroup(exercise.name) || 'Other';
+
+}
+
+
+export function getExerciseEquipment(exercise = {}) {
+
+  return exercise.equipment || getEquipment(exercise.name) || 'Body Weight';
 
 }
 

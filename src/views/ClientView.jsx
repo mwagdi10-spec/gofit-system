@@ -2,7 +2,6 @@
 // ══════════════════════════════════════════════════════════════════════════════
 function ClientView({ workouts, db, appId, identifier, allLogs }) {
   const [selectedDay, setSelectedDay]         = useState('');
-  const [note, setNote]                       = useState('');
   const [sessionFinished, setSessionFinished] = useState(false);
   const [showSummary, setShowSummary]         = useState(false);
   const [expandedCategories, setExpandedCategories] = useState({});

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import BottomNav from '../components/BottomNav';
 
-export default function PlanScreen({ navigate, current, plan = [] }) {
-  const [open, setOpen] = useState(() => plan[0]?.week_id ?? null);
+export default function PlanScreen({ navigate, current, plan = [], onReopenDay }) {
+  const [open, setOpen] = useState(null);
   const [weekDays, setWeekDays] = useState(() => {
     const init = {};
     plan.forEach(w => { init[w.week_id] = w.days; });
@@ -15,7 +15,7 @@ export default function PlanScreen({ navigate, current, plan = [] }) {
     const init = {};
     plan.forEach(w => { init[w.week_id] = w.days; });
     setWeekDays(init);
-    setOpen(prev => (plan.some(w => w.week_id === prev) ? prev : plan[0]?.week_id ?? null));
+    setOpen(prev => (plan.some(w => w.week_id === prev) ? prev : null));
   }, [plan]);
 
   function onDragStart(idx) { dragIdx.current = idx; }
@@ -26,6 +26,13 @@ export default function PlanScreen({ navigate, current, plan = [] }) {
     days.splice(dropIdx, 0, moved);
     setWeekDays(p => ({ ...p, [weekId]: days }));
     dragIdx.current = null;
+  }
+
+  // confirm before undoing a completed day
+  function handleReopen(day, weekId) {
+    if (window.confirm(`Reopen "${day}"? This will undo its completion.`)) {
+      onReopenDay?.(day, weekId);
+    }
   }
 
   if (!plan.length) return (
@@ -86,23 +93,47 @@ export default function PlanScreen({ navigate, current, plan = [] }) {
                         <p className="text-slate-500 text-xs">{day.type}</p>
                       </div>
 
-                      {day.isCompleted ? (
-                        <span className="text-green-500 text-sm font-semibold">Done</span>
-                      ) : (
-                        <button
-                          onClick={() => navigate('ActiveWorkout', {
-                            day:    day.title,
-                            type:   day.type,
-                            weekId: week.week_id,
-                          })}
-                          className={`text-white text-xs font-black px-4 py-2 rounded-xl tracking-widest transition-colors
-                            ${day.isActive
-                              ? 'bg-blue-500 hover:bg-blue-600'
-                              : 'bg-[#2A2A50] hover:bg-[#3A3A60]'}`}
-                        >
-                          {day.isActive ? 'START' : 'GO'}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!day.isCompleted && (
+                          <button
+                            onClick={() => navigate('WorkoutPreview', {
+                              day:    day.title,
+                              type:   day.type,
+                              weekId: week.week_id,
+                            })}
+                            title="Preview workout"
+                            className="bg-[#1C1C38] border border-[#2A2A50] text-slate-300 text-xs font-black px-2.5 py-2 rounded-xl hover:border-blue-500 transition-colors"
+                          >
+                            👁
+                          </button>
+                        )}
+
+                        {day.isCompleted ? (
+                          <>
+                            <span className="text-green-500 text-sm font-semibold">Done</span>
+                            <button
+                              onClick={() => handleReopen(day.title, week.week_id)}
+                              className="bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg transition-colors"
+                            >
+                              ↺ Reopen
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => navigate('ActiveWorkout', {
+                              day:    day.title,
+                              type:   day.type,
+                              weekId: week.week_id,
+                            })}
+                            className={`text-white text-xs font-black px-4 py-2 rounded-xl tracking-widest transition-colors
+                              ${day.isActive
+                                ? 'bg-blue-500 hover:bg-blue-600'
+                                : 'bg-[#2A2A50] hover:bg-[#3A3A60]'}`}
+                          >
+                            {day.isActive ? 'START' : 'GO'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

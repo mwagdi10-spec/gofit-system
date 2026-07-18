@@ -18,19 +18,20 @@ export function buildUser(clientInfo, logs = []) {
   ).size;
 
   return {
-    name:           clientInfo?.name         || 'Client',
-    currentPhase:   `Phase ${clientInfo?.nasm_phase || 1} – ${clientInfo?.goal || 'Training'}`,
-    weeklyProgress: activeDays,
-    weeklyGoal:     daysPerWeek,
-    nextWorkout:    buildNextWorkoutLabel(clientInfo),
-    age:            clientInfo?.age          || 0,
-    weight:         clientInfo?.weight       || 0,
-    height:         clientInfo?.height       || 0,
-    goal:           clientInfo?.goal         || 'Fitness',
-    nasm_phase:     clientInfo?.nasm_phase   || 1,
-    injuries:       clientInfo?.injuries     || '',
-    measurements:   clientInfo?.measurements || '',
-    coachNotes:     clientInfo?.coachNotes   || '',
+    name:              clientInfo?.name              || 'Client',
+    currentPhase:      `Phase ${clientInfo?.nasm_phase || 1} – ${clientInfo?.goal || 'Training'}`,
+    weeklyProgress:    activeDays,
+    weeklyGoal:        daysPerWeek,
+    nextWorkout:       buildNextWorkoutLabel(clientInfo),
+    age:               clientInfo?.age               || 0,
+    weight:            clientInfo?.weight            || 0,
+    height:            clientInfo?.height            || 0,
+    goal:              clientInfo?.goal               || 'Fitness',
+    nasm_phase:        clientInfo?.nasm_phase         || 1,
+    injuries:          clientInfo?.injuries           || '',
+    measurements:      clientInfo?.measurements       || '',
+    coachNotes:        clientInfo?.coachNotes         || '',
+    weeklyCardioTarget: clientInfo?.weeklyCardioTarget || 0,
   };
 }
 
@@ -105,9 +106,9 @@ export function buildPlan(workouts, sessions = []) {
 // ─────────────────────────────────────────────────────────────
 // SESSION PHASES  (ActiveWorkout screen)
 // ─────────────────────────────────────────────────────────────
-const PHASE_ORDER   = ['WARM-UP','ACTIVATION','SKILL','RESISTANCE','CARDIO','COOL-DOWN'];
-const PHASE_LABELS  = { 'COOL-DOWN': 'STATIC STRETCHES (10 mins)' };
-const NO_LOG_PHASES = new Set(['WARM-UP','COOL-DOWN','CARDIO']);
+const PHASE_ORDER   = ['WARM-UP','ACTIVATION','SKILL','RESISTANCE','CARDIO','HIIT','COOL-DOWN'];
+const PHASE_LABELS  = { 'HIIT': 'HIIT (Optional)', 'COOL-DOWN': 'STATIC STRETCHES (10 mins)' };
+const NO_LOG_PHASES = new Set(['WARM-UP','COOL-DOWN','CARDIO','HIIT']);
 
 const DEFAULT_STRETCHES = [
   { id:'ds1',  name:'Quad Stretch',             gifUrl:'', link:'' },
@@ -158,8 +159,24 @@ export function buildSessionPhases(workouts, day, logs = [], identifier = '', li
     .filter(Boolean);
 }
 
+// completedAt نفس تاريخ اليوم الحالي
+function isLoggedToday(ts) {
+  const d = ts?.toDate?.();
+  if (!d) return false;
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth()    === now.getMonth() &&
+         d.getDate()      === now.getDate();
+}
+
 function exerciseToCard(w, logs, identifier, cat) {
   const noLog = NO_LOG_PHASES.has(cat);
+  // PR badges: Resistance only
+  const pr = cat === 'RESISTANCE' ? buildPersonalRecords(w, logs, identifier) : { bestReps: 0, bestWeight: 0 };
+  // already logged today → survive History نافذة back/forward
+  const loggedToday = logs.find(l =>
+    l.exerciseId === w.id && l.clientName === identifier && isLoggedToday(l.completedAt)
+  );
   return {
     id:              w.id,
     name:            w.name,
@@ -170,11 +187,17 @@ function exerciseToCard(w, logs, identifier, cat) {
     unit:            cat === 'CARDIO' ? 'min' : cat === 'COOL-DOWN' ? 'sec' : 'kg',
     loggedWeight:    null,
     loggedReps:      w.reps         || '10',
-    status:          'pending',
+    status:          loggedToday ? 'saved' : 'pending',
     gifUrl:          w.gifUrl       || '',
+    videoUrl:        w.videoUrl     || '',
+    workSeconds:     w.workSeconds  || 30,
+    restSeconds:     w.restSeconds  || 15,
+    rounds:          w.rounds       || 8,
     alternatives:    buildAlternatives(w),
     overloadMessage: noLog ? '' : buildOverloadMsg(w, logs, identifier),
     coachNote:       w.coachNote    || '',
+    bestReps:        pr.bestReps,
+    bestWeight:      pr.bestWeight,
   };
 }
 
@@ -185,6 +208,7 @@ function buildAlternatives(w) {
       id:          `alt-${w.id}-${i}`,
       name:        a.name,
       gifUrl:      a.gifUrl  || '',
+      videoUrl:    a.videoUrl || '',
       tempo:       w.tempo   || '',
       targetSets:  parseInt(w.sets) || 3,
       targetReps:  w.reps    || '10',
@@ -211,11 +235,26 @@ function buildOverloadMsg(w, logs, identifier) {
   return 'Repeat current load and aim for cleaner reps.';
 }
 
+// أعلى تكرار وأقصى وزن historically لكل تمرين (Resistance PR badges)
+function buildPersonalRecords(w, logs, identifier) {
+  const history = logs.filter(l => l.exerciseId === w.id && l.clientName === identifier);
+  let bestReps = 0, bestWeight = 0;
+  history.forEach(l => {
+    (l.setsData || []).forEach(s => {
+      const reps   = parseFloat(s.reps)   || 0;
+      const weight = parseFloat(s.weight) || 0;
+      if (reps   > bestReps)   bestReps   = reps;
+      if (weight > bestWeight) bestWeight = weight;
+    });
+  });
+  return { bestReps, bestWeight };
+}
+
 // ─────────────────────────────────────────────────────────────
 // MUSCLE PROGRESS  (ProgressScreen)
 // ─────────────────────────────────────────────────────────────
 export function buildMuscleProgress(logs) {
-  const MUSCLES = ['Chest','Back','Quads','Hamstrings','Arms'];
+  const MUSCLES = ['Chest','Back','Upper Legs','Lower Legs','Biceps','Triceps'];
 
   return MUSCLES.map(muscle => {
     const muscleLogs = logs.filter(l => {
@@ -245,6 +284,99 @@ export function buildMuscleProgress(logs) {
 
     return { name: muscle, start_weight, current_weight, monthlyData };
   }).filter(m => m.current_weight > 0);
+}
+
+// ─────────────────────────────────────────────────────────────
+// STREAK  (HomeScreen) — مبني على sessions.completed المكتملة فعلياً
+// ─────────────────────────────────────────────────────────────
+export function buildStreak(sessions = []) {
+  const days = new Set(
+    sessions
+      .filter(s => s.completed && s.completedAt?.toDate)
+      .map(s => s.completedAt.toDate().toDateString())
+  );
+  if (!days.size) return { current: 0, longest: 0 };
+
+  // current streak: يرجع للخلف من النهاردة (أو أمبارح لو النهاردة لسه مفيهاش تمرين)
+  let current = 0;
+  const cursor = new Date(); cursor.setHours(0, 0, 0, 0);
+  if (!days.has(cursor.toDateString())) cursor.setDate(cursor.getDate() - 1);
+  while (days.has(cursor.toDateString())) {
+    current++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  // longest streak من كل الأيام المسجلة
+  const sorted = [...days].map(d => new Date(d)).sort((a, b) => b - a);
+  let longest = 1, run = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    const diffDays = Math.round((sorted[i - 1] - sorted[i]) / 86400000);
+    run     = diffDays === 1 ? run + 1 : 1;
+    longest = Math.max(longest, run);
+  }
+
+  return { current, longest: Math.max(longest, current) };
+}
+
+// ─────────────────────────────────────────────────────────────
+// LEVEL / XP  (HomeScreen) — مشتق من عدد الـ sessions المكتملة، بدون حقل مخزن
+// ─────────────────────────────────────────────────────────────
+const XP_PER_SESSION = 50;
+const LEVELS = [
+  { name: 'Rookie',       min: 0    },
+  { name: 'Amateur',      min: 200  },
+  { name: 'Intermediate', min: 600  },
+  { name: 'Advanced',     min: 1200 },
+  { name: 'Elite',        min: 2000 },
+];
+
+export function buildLevel(sessions = []) {
+  const xp = sessions.filter(s => s.completed).length * XP_PER_SESSION;
+
+  let idx = 0;
+  LEVELS.forEach((l, i) => { if (xp >= l.min) idx = i; });
+  const cur  = LEVELS[idx];
+  const next = LEVELS[idx + 1] || null;
+  const progressPct = next
+    ? Math.round(((xp - cur.min) / (next.min - cur.min)) * 100)
+    : 100;
+
+  return {
+    xp,
+    levelName:   cur.name,
+    levelNumber: idx + 1,
+    nextName:    next?.name || null,
+    xpToNext:    next ? next.min - xp : 0,
+    progressPct,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// MUSCLE RECOVERY MAP  (ProgressScreen) — مبني على آخر completedAt لكل عضلة
+// ─────────────────────────────────────────────────────────────
+const RECOVERY_HOURS = 48; // وقت التعافي الكامل الافتراضي
+
+export function buildRecoveryMap(logs = []) {
+  const MUSCLES = ['Chest', 'Back', 'Upper Legs', 'Lower Legs', 'Biceps', 'Triceps'];
+  const now = new Date();
+
+  return MUSCLES.map(muscle => {
+    const lastLog = logs.reduce((latest, l) => {
+      const m = l.muscleGroup || getMuscleGroup(l.exerciseName || '');
+      if (m !== muscle) return latest;
+      const d = l.completedAt?.toDate?.();
+      if (!d) return latest;
+      return (!latest || d > latest) ? d : latest;
+    }, null);
+
+    if (!lastLog) return { name: muscle, recoveryPct: 100, lastTrainedAt: null, status: 'green' };
+
+    const hoursSince  = (now - lastLog) / 3600000;
+    const recoveryPct = Math.min(100, Math.round((hoursSince / RECOVERY_HOURS) * 100));
+    const status       = recoveryPct >= 80 ? 'green' : recoveryPct >= 40 ? 'yellow' : 'red';
+
+    return { name: muscle, recoveryPct, lastTrainedAt: lastLog, status };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────

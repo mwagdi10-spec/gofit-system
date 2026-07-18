@@ -11,6 +11,7 @@ export function useClientData(identifier) {
   const [sessions,    setSessions]    = useState([]);
   const [clientInfo,  setClientInfo]  = useState(null);
   const [library,     setLibrary]     = useState([]);
+  const [checkIns,    setCheckIns]    = useState([]);
   const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
@@ -63,8 +64,17 @@ export function useClientData(identifier) {
       snap => setLibrary(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
 
-    return () => { u0(); u1(); u2(); u3(); u4(); };
+    const u5 = onSnapshot(
+      query(
+        collection(db, 'artifacts', APP_ID, 'public', 'data', 'check_ins'),
+        where('clientName', '==', identifier),
+        orderBy('createdAt', 'desc')
+      ),
+      snap => setCheckIns(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+
+    return () => { u0(); u1(); u2(); u3(); u4(); u5(); };
   }, [identifier]);
 
-  return { workouts, logs, sessions, clientInfo, library, loading };
+  return { workouts, logs, sessions, clientInfo, library, checkIns, loading };
 }

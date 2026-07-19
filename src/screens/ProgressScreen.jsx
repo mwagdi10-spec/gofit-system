@@ -103,7 +103,6 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
     return latestByExercise.filter(l => l.exerciseName.toLowerCase().includes(q));
   }, [latestByExercise, historySearch]);
 
-  const maxLoad   = weeklyLoad.length ? Math.max(...weeklyLoad.map(w => w.load), 1) : 1;
   const commitPct = user.weeklyGoal
     ? Math.round((user.weeklyProgress / user.weeklyGoal) * 100)
     : 0;
@@ -207,29 +206,6 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
                   <p className="text-red-400 text-xs font-bold mt-0.5">{weakestMuscle.pct >= 0 ? '+' : ''}{weakestMuscle.pct}%</p>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Weekly Load Bar Chart */}
-          {weeklyLoad.some(w => w.load > 0) && (
-            <div className="bg-[#1C1C38] border border-[#2A2A50] rounded-2xl p-5">
-              <p className="text-white font-bold mb-5">Weekly Load (kg)</p>
-              <div className="flex justify-around items-end h-32">
-                {weeklyLoad.map(w => {
-                  const h = Math.round((w.load / maxLoad) * 100);
-                  return (
-                    <div key={w.week} className="flex flex-col items-center gap-1">
-                      <span className="text-slate-400 text-[10px]">
-                        {w.load >= 1000 ? `${(w.load / 1000).toFixed(1)}k` : w.load}
-                      </span>
-                      <div className="w-9 bg-[#2A2A50] rounded-lg flex items-end overflow-hidden" style={{ height: 90 }}>
-                        <div className="w-full bg-blue-500 rounded-lg" style={{ height: `${h}%` }} />
-                      </div>
-                      <span className="text-slate-400 text-xs font-semibold">{w.week}</span>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           )}
 

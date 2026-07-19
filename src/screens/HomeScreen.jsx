@@ -86,7 +86,7 @@ export default function HomeScreen({
 
   return (
     <div className="min-h-screen bg-[#121a2a] max-w-sm mx-auto px-5 pb-24">
-      <div className="pt-14 mb-7 flex items-start justify-between">
+      <div className="pt-7 mb-5 flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white leading-tight">
             Welcome,<br />{user.name || 'Client'} 👋
@@ -168,13 +168,13 @@ export default function HomeScreen({
         </div>
       </div>
 
-      <div className="bg-[#1C1C38] rounded-2xl p-5 mb-5 border border-[#2A2A50]">
+      <div className="bg-[#1C1C38] rounded-2xl p-3 mb-3 border border-[#2A2A50]">
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="text-slate-400 text-xs uppercase font-semibold">Readiness</p>
             <p className="text-white text-3xl font-black">{readiness}/100</p>
           </div>
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black ${readiness >= 70 ? 'bg-emerald-500/15 text-emerald-400' : readiness >= 45 ? 'bg-amber-500/15 text-amber-300' : 'bg-red-500/15 text-red-300'}`}>
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black ${readiness >= 70 ? 'bg-emerald-500/15 text-emerald-400' : readiness >= 45 ? 'bg-amber-500/15 text-amber-300' : 'bg-red-500/15 text-red-300'}`}>
             {readiness >= 70 ? 'GO' : readiness >= 45 ? 'OK' : 'LOW'}
           </div>
         </div>
@@ -190,12 +190,11 @@ export default function HomeScreen({
         </div>
       )}
 
-      <div className="bg-[#1C1C38] rounded-2xl p-5 mb-5 border border-[#2A2A50] space-y-4">
+      <div className="bg-[#1C1C38] rounded-2xl p-3 mb-3 border border-[#2A2A50] space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-white font-semibold text-sm">Daily Check-in</span>
-          <span className="text-slate-400 text-xs">1 minute</span>
         </div>
-        <div className="bg-[#14142B] border border-[#2A2A50] rounded-2xl p-4 space-y-2.5">
+        <div className="bg-[#14142B] border border-[#2A2A50] rounded-2xl p-3 space-y-2.5">
           {CHECKIN_FIELDS.map(field => (
             <div key={field.key}>
               <div className="flex items-center justify-between mb-0.5">
@@ -216,14 +215,14 @@ export default function HomeScreen({
         <button
           onClick={submitCheckIn}
           disabled={saving}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 rounded-2xl py-4 text-white font-bold transition-all"
+          className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 rounded-2xl py-3 text-white font-bold transition-all"
         >
           {saving ? 'Saving...' : 'Send Check-in'}
         </button>
       </div>
 
       {checkIns.length > 0 && (
-        <div className="mb-5 bg-[#1C1C38] rounded-2xl p-5 border border-[#2A2A50]">
+        <div className="mb-5 bg-[#1C1C38] rounded-2xl p-3 border border-[#2A2A50]">
           <p className="text-white font-semibold text-sm mb-3">Latest Check-in</p>
           <p className="text-slate-400 text-xs leading-relaxed">
             Sleep {checkIns[0].sleep}/10, Energy {checkIns[0].energy}/10, Soreness {checkIns[0].soreness}/10, Stress {checkIns[0].stress}/10

@@ -157,6 +157,7 @@ export default function AppRouter() {
         user={user}
         identifier={identifier}
         onReopenDay={handleReopenDay}
+        weeklyLoad={weeklyLoad}
       />
     ),
     Profile: (

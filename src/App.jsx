@@ -7,10 +7,15 @@ import {
 } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import AppRouter from './navigation/AppRouter';
+import ActiveWorkoutScreen from './screens/ActiveWorkoutScreen';
+import { buildSessionPhases } from './utils/clientDataTransformers';
 import { NASM_OPT_PHASES, PHASE_COLORS } from './constants/nasm';
 import { WORKOUT_TEMPLATES } from './constants/templates';
+import { QUESTIONNAIRE, QUESTIONNAIRE_EN } from './constants/questionnaire';
 import { db, auth, APP_ID, TRAINER_MAIL, CATEGORIES, MUSCLE_GROUPS, EQUIPMENT_TYPES } from './services/firebase/config';
 import { migrateMuscleAndEquipment } from './scripts/migrateMuscleEquipment';
+import { seedImportedExercises } from './scripts/seedImportedExercises';
+import { seedHomeExercises } from './scripts/seedHomeExercises';
 import { deleteLogsByDate, deleteLogsByExerciseAndDate } from './services/firebase/logs';
 import { titleCase, formatName, getMuscleGroup, getExerciseMuscle, getExerciseEquipment, dateFromLog, startOfDay } from './utils/formatters';
 import { buildExpandedTemplateItems } from './utils/helpers';
@@ -32,9 +37,11 @@ import { ClientAnalyticsDashboard } from './features/ClientAnalyticsDashboard';
 import { ExerciseRow, CoolDownStretchCard } from './features/ExerciseRow';
 import WeeklySidebar from './features/WeeklySidebar'
 import { useWeeklyPlan } from './hooks/useWeeklyPlan'
+import PublicIntakeForm from './components/public/PublicIntakeForm';
 
-function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNames }) {
+function TrainerDashboard({ workouts, logs, checkIns, notes, leads, db, appId, clientNames }) {
   const [activeTab, setActiveTab]             = useState('overview');
+  const [programSubTab, setProgramSubTab]     = useState('plan'); // 'plan' | 'add'
   const [targetClient, setTargetClient]       = useState('');
   const [sessionName, setSessionName]         = useState('');
   const [newEx, setNewEx]                     = useState({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'',alternatives:makeDefaultAlternatives()});
@@ -56,10 +63,24 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
   const [copyFromClient, setCopyFromClient]   = useState('');
   const [libraryGroupBy, setLibraryGroupBy]   = useState('muscle');
   const [librarySearch, setLibrarySearch]     = useState('');
+  const [libraryHomeOnly, setLibraryHomeOnly] = useState(false);
   const [openLibraryGroup, setOpenLibraryGroup] = useState(null);
   const [notesFilter, setNotesFilter]         = useState('unread'); // 'unread' | 'all'
+  const [notesView, setNotesView]             = useState('notes'); // 'notes' | 'leads'
+  const [expandedLead, setExpandedLead]        = useState(null); // lead.id being reviewed
+  const [replyingTo, setReplyingTo]           = useState(null); // note id
+  const [replyText, setReplyText]             = useState('');
   const [clientGoals, setClientGoals]         = useState([]);
+  const [clientMeasurements, setClientMeasurements] = useState([]);
+  const [appUpdates, setAppUpdates]           = useState([]);
+  const [updateForm, setUpdateForm]           = useState({ title: '', message: '' });
+  const [postingUpdate, setPostingUpdate]     = useState(false);
+  const [clientQuestionnaire, setClientQuestionnaire] = useState(null);
   const [goalForm, setGoalForm] = useState({ type: 'exercise_weight', label: '', exerciseName: '', targetValue: '', unit: 'kg' });
+  const [sessionClient, setSessionClient]     = useState('');
+  const [sessionWeek, setSessionWeek]         = useState('Week 1');
+  const [sessionDay, setSessionDay]           = useState('');
+  const [liveSession, setLiveSession]         = useState(false);
   const bg = 'bg-Blue border-slate-200';
   const tx = 'text-slate-900';
   const sub = 'text-slate-500';
@@ -83,6 +104,55 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
     );
     return()=>u();
   },[db,appId,analyticsClient]);
+
+  // Load body measurements for selected analytics client
+  useEffect(()=>{
+    if(!analyticsClient){ setClientMeasurements([]); return; }
+    const u = onSnapshot(
+      query(collection(db,'artifacts',appId,'public','data','body_measurements'), where('clientName','==',analyticsClient), orderBy('createdAt','asc')),
+      s=>setClientMeasurements(s.docs.map(d=>({id:d.id,...d.data()})))
+    );
+    return()=>u();
+  },[db,appId,analyticsClient]);
+
+  // Load app updates (latest first)
+  useEffect(()=>{
+    const u = onSnapshot(
+      query(collection(db,'artifacts',appId,'public','data','updates'), orderBy('createdAt','desc')),
+      s=>setAppUpdates(s.docs.map(d=>({id:d.id,...d.data()})))
+    );
+    return()=>u();
+  },[db,appId]);
+
+  // Load questionnaire response for selected analytics client
+  useEffect(()=>{
+    if(!analyticsClient){ setClientQuestionnaire(null); return; }
+    const u = onSnapshot(
+      doc(db,'artifacts',appId,'public','data','questionnaire_responses',analyticsClient),
+      s=>setClientQuestionnaire(s.exists()?s.data():null)
+    );
+    return()=>u();
+  },[db,appId,analyticsClient]);
+
+  async function handlePostUpdate(){
+    if(!updateForm.title.trim() || !updateForm.message.trim()) return;
+    setPostingUpdate(true);
+    try{
+      await addDoc(collection(db,'artifacts',appId,'public','data','updates'),{
+        title:     updateForm.title.trim(),
+        message:   updateForm.message.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setUpdateForm({ title:'', message:'' });
+    }catch(e){ console.error('post update failed:',e); }
+    setPostingUpdate(false);
+  }
+
+  async function handleDeleteUpdate(id){
+    if(!window.confirm('Delete this update?')) return;
+    try{ await deleteDoc(doc(db,'artifacts',appId,'public','data','updates',id)); }
+    catch(e){ console.error('delete update failed:',e); }
+  }
 
   async function handleAddGoal(){
     if(!analyticsClient || !goalForm.label.trim() || !goalForm.targetValue) return;
@@ -133,6 +203,39 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
       }));
   },[workouts,targetClient]);
 
+  // ── Session Mode: client/day scoped for live logging ────────
+  const sessionClientWorkouts = useMemo(()=>{
+    return workouts.filter(w=>w.assignedTo===sessionClient);
+  },[workouts,sessionClient]);
+
+  const sessionWeeks = useMemo(()=>{
+    return [...new Set(sessionClientWorkouts.map(w=>w.week||'Week 1'))]
+      .sort((a,b)=>(parseInt(a.match(/\d+/)?.[0])||0)-(parseInt(b.match(/\d+/)?.[0])||0));
+  },[sessionClientWorkouts]);
+
+  const sessionDays = useMemo(()=>{
+    return [...new Set(sessionClientWorkouts.filter(w=>(w.week||'Week 1')===sessionWeek).map(w=>w.day))]
+      .filter(Boolean)
+      .sort((a,b)=>(parseInt(a.match(/\d+/)?.[0])||999)-(parseInt(b.match(/\d+/)?.[0])||999));
+  },[sessionClientWorkouts,sessionWeek]);
+
+  const liveSessionPhases = useMemo(()=>{
+    if(!liveSession || !sessionDay) return [];
+    return buildSessionPhases(sessionClientWorkouts, sessionDay, logs, sessionClient, libraryData, sessionWeek);
+  },[liveSession,sessionClientWorkouts,sessionDay,logs,sessionClient,libraryData,sessionWeek]);
+
+  async function handleEndLiveSession(recap={}){
+    if(sessionDay && sessionClient){
+      try{
+        await addDoc(collection(db,'artifacts',appId,'public','data','sessions'),{
+          clientName: sessionClient, day: sessionDay, week: sessionWeek,
+          completed: true, completedAt: serverTimestamp(), recap,
+        });
+      }catch(e){ console.error('trainer session save:',e); }
+    }
+    setLiveSession(false);
+  }
+
   // Scoped to selectedWeek for form chips
   const clientDays = useMemo(()=>{
     if(!targetClient) return [];
@@ -141,6 +244,13 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
     )].filter(Boolean)
       .sort((a,b)=>(parseInt(a.match(/\d+/)?.[0])||999)-(parseInt(b.match(/\d+/)?.[0])||999));
   },[workouts,targetClient,selectedWeek]);
+
+  const selectedDayWorkouts = useMemo(()=>{
+    if(!targetClient || !selectedWeek || !sessionName) return [];
+    return workouts
+      .filter(w=>w.assignedTo===targetClient&&w.day===sessionName&&(w.week||'Week 1')===selectedWeek)
+      .sort((a,b)=>(a.orderIndex||0)-(b.orderIndex||0));
+  },[workouts,targetClient,selectedWeek,sessionName]);
 
   const getNextDayName = (weekId=selectedWeek) => {
     const week = weeksStructure.find(w=>w.id===weekId);
@@ -168,6 +278,19 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
       await deleteDoc(doc(db,'artifacts',appId,'public','data','workouts',ex.id));
     }
     if(sessionName===day&&selectedWeek===weekId) setSessionName('');
+  };
+
+  const deleteWeek = async (weekId) => {
+    const weekExercises = workouts.filter(w=>w.assignedTo===targetClient&&(w.week||'Week 1')===weekId);
+    if(!targetClient || !weekId) return;
+    if(!window.confirm(`Delete ${weekId} and ${weekExercises.length} exercise(s)?`)) return;
+    for (const ex of weekExercises) {
+      await deleteDoc(doc(db,'artifacts',appId,'public','data','workouts',ex.id));
+    }
+    if(selectedWeek===weekId) {
+      setSelectedWeek('Week 1');
+      setSessionName('');
+    }
   };
 
   // Archive grouped by date
@@ -310,18 +433,18 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
 
   const libraryGroups = useMemo(()=>{
     const q = librarySearch.toLowerCase().trim();
-    const filtered = libraryData.filter(ex => !q || ex.name?.toLowerCase().includes(q) || getExerciseMuscle(ex).toLowerCase().includes(q) || getExerciseEquipment(ex).toLowerCase().includes(q) || ex.category?.toLowerCase().includes(q));
+    const filtered = libraryData.filter(ex => (!libraryHomeOnly || ex.isHome === true) && (!q || ex.name?.toLowerCase().includes(q) || getExerciseMuscle(ex).toLowerCase().includes(q) || getExerciseEquipment(ex).toLowerCase().includes(q) || ex.category?.toLowerCase().includes(q)));
     const groups = libraryGroupBy === 'muscle' ? MUSCLE_GROUPS : libraryGroupBy === 'equipment' ? EQUIPMENT_TYPES : CATEGORIES;
     return groups.map(group => ({
       group,
       exercises: filtered.filter(ex => libraryGroupBy === 'muscle' ? getExerciseMuscle(ex) === group : libraryGroupBy === 'equipment' ? getExerciseEquipment(ex) === group : ex.category === group).sort((a,b) => a.name.localeCompare(b.name))
     })).filter(item => item.exercises.length > 0);
-  }, [libraryData, libraryGroupBy, librarySearch]);
+  }, [libraryData, libraryGroupBy, librarySearch, libraryHomeOnly]);
 
   const libraryStats = useMemo(() => {
     const filtered = libraryData.filter(ex => {
       const q = librarySearch.toLowerCase().trim();
-      return !q || ex.name?.toLowerCase().includes(q) || getExerciseMuscle(ex).toLowerCase().includes(q) || getExerciseEquipment(ex).toLowerCase().includes(q) || ex.category?.toLowerCase().includes(q);
+      return (!libraryHomeOnly || ex.isHome === true) && (!q || ex.name?.toLowerCase().includes(q) || getExerciseMuscle(ex).toLowerCase().includes(q) || getExerciseEquipment(ex).toLowerCase().includes(q) || ex.category?.toLowerCase().includes(q));
     });
     const byCategory = {};
     const byMuscle = {};
@@ -339,7 +462,7 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
       topCategory,
       categories: byCategory,
     };
-  }, [libraryData, librarySearch]);
+  }, [libraryData, librarySearch, libraryHomeOnly]);
 
   // ملاحظات العملاء (Send Note) — غير مقروءة أولاً، الأحدث أولاً
   const sortedNotes = useMemo(() => {
@@ -379,14 +502,40 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
     alert(`Copied ${source.length} exercises \u2705`);
   };
 
+  const convertLead = async (lead) => {
+    const identifier = window.prompt('Enter login ID for this client (phone/email):', lead.answers?.name || '');
+    if (!identifier || !identifier.trim()) return;
+    const id = identifier.trim();
+    if (clientNames[id]) { alert('This ID already exists'); return; }
+    try {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'client_names', id), {
+        name: lead.answers?.name || id,
+      });
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'questionnaire_responses', id), {
+        clientName: id, answers: lead.answers, submittedAt: lead.submittedAt || serverTimestamp(),
+      });
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leads', lead.id));
+      alert(`Converted to client ✅ (ID: ${id})`);
+    } catch (e) { console.error('convertLead failed:', e); alert('Failed: ' + e.message); }
+  };
+
+  const deleteLead = async (leadId) => {
+    if (!window.confirm('Delete this lead?')) return;
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leads', leadId));
+  };
+
   const tabButtons = [
     {id:'overview', label:'Overview'},
     {id:'clients', label:'Clients'},
     {id:'library', label:'Library'},
-    {id:'plan', label:'Plan'},
-    {id:'addProgram', label:'Add Program'},
+    {id:'program', label:'Plan / Add Program'},
     {id:'analytics', label:'Analytics'},
+    {id:'measurements', label:'Measurements'},
+    {id:'updates', label:'Updates'},
+    {id:'nutrition', label:'Nutrition'},
+    {id:'questionnaire', label:'Questionnaire'},
     {id:'notes', label:'Notes', badge: unreadNotesCount},
+    {id:'session', label:'Session Mode'},
   ];
 
   return(
@@ -556,7 +705,7 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
               {needsPlanClients.length>0 ? (
                 <div className="flex flex-wrap gap-1.5">
                   {needsPlanClients.slice(0,4).map(c=>(
-                    <button key={c.phone} onClick={()=>{setTargetClient(c.phone);setActiveTab('plan');}} className="text-[10px] font-black px-2 py-1 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 hover:bg-amber-500 hover:text-white transition-all truncate max-w-[100px]">
+                    <button key={c.phone} onClick={()=>{setTargetClient(c.phone);setActiveTab('program');setProgramSubTab('plan');}} className="text-[10px] font-black px-2 py-1 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 hover:bg-amber-500 hover:text-white transition-all truncate max-w-[100px]">
                       {titleCase(c.name)}
                     </button>
                   ))}
@@ -630,7 +779,7 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
                       </div>
                     </div>
                     <div className="grid grid-cols-2 md:flex md:justify-end gap-2 w-full md:w-auto">
-                      <button onClick={()=>{setTargetClient(phone);setActiveTab('plan');}} className="bg-white border-2 border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase hover:border-emerald-300 transition-all">Plan</button>
+                      <button onClick={()=>{setTargetClient(phone);setActiveTab('program');setProgramSubTab('plan');}} className="bg-white border-2 border-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase hover:border-emerald-300 transition-all">Plan</button>
                       <button onClick={()=>setSelectedProfileModal({...client,phone})} className="bg-slate-900 text-emerald-400 px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-slate-800 transition-all">View</button>
                     </div>
                   </div>
@@ -642,7 +791,7 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
       )}
 
       {selectedProfileModal&&(
-        <ClientProfileViewModal client={selectedProfileModal} logs={logs} workouts={workouts} checkIns={checkIns} onClose={()=>setSelectedProfileModal(null)} db={db} appId={appId} onToPlan={()=>{setSelectedProfileModal(null);setTargetClient(selectedProfileModal.phone);setActiveTab('plan');}}/>
+        <ClientProfileViewModal client={selectedProfileModal} logs={logs} workouts={workouts} checkIns={checkIns} onClose={()=>setSelectedProfileModal(null)} db={db} appId={appId} onToPlan={()=>{setSelectedProfileModal(null);setTargetClient(selectedProfileModal.phone);setActiveTab('program');setProgramSubTab('plan');}}/>
       )}
 
       {/* LIBRARY */}
@@ -661,6 +810,7 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
                 <button onClick={()=>setLibraryGroupBy('equipment')} className={`px-3 py-3 rounded-2xl text-[11px] font-black uppercase transition-all border ${libraryGroupBy==='equipment'?'bg-slate-900 text-emerald-400 border-slate-900':'bg-white text-slate-500 border-slate-200'}`}>By Equipment</button>
                 <button onClick={()=>setLibraryGroupBy('type')} className={`px-3 py-3 rounded-2xl text-[11px] font-black uppercase transition-all border ${libraryGroupBy==='type'?'bg-slate-900 text-emerald-400 border-slate-900':'bg-white text-slate-500 border-slate-200'}`}>By Type</button>
               </div>
+              <button onClick={()=>setLibraryHomeOnly(v=>!v)} className={`w-full px-3 py-3 rounded-2xl text-[11px] font-black uppercase transition-all border ${libraryHomeOnly?'bg-emerald-500 text-white border-emerald-500':'bg-white text-slate-500 border-slate-200'}`}>🏠 Home Only</button>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-2xl bg-blue-50 border-2 border-l-blue-500 border-l-[6px] p-4">
@@ -680,6 +830,24 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
                 alert(`Migration done. Library: ${res.libraryCount}, Workouts: ${res.workoutsCount}`);
               }catch(e){console.error(e);alert('Migration failed: '+e.message);}
             }} className="w-full bg-blue-50 text-blue-600 border-2 border-blue-100 px-4 py-2.5 rounded-2xl font-black text-[10px] uppercase hover:bg-blue-500 hover:text-white transition-all">⚙️ Run Muscle/Equipment Migration</button>
+            <button onClick={async()=>{
+              if(!window.confirm('Import 349 exercises from PDF list? Duplicates already in the library will be skipped automatically.')) return;
+              try{
+                const res = await seedImportedExercises();
+                const added = res.filter(r=>r.ok).length;
+                const skipped = res.filter(r=>r.skipped).length;
+                alert(`Import done. Added: ${added}, Skipped (duplicates): ${skipped}`);
+              }catch(e){console.error(e);alert('Import failed: '+e.message);}
+            }} className="w-full bg-emerald-50 text-emerald-600 border-2 border-emerald-100 px-4 py-2.5 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-500 hover:text-white transition-all">📥 Import Exercises from PDF (349)</button>
+            <button onClick={async()=>{
+              if(!window.confirm('Seed 44 home workout exercises? Duplicates already in the library will be skipped automatically.')) return;
+              try{
+                const res = await seedHomeExercises();
+                const added = res.filter(r=>r.ok).length;
+                const skipped = res.filter(r=>r.skipped).length;
+                alert(`Home exercises seeded. Added: ${added}, Skipped (duplicates): ${skipped}`);
+              }catch(e){console.error(e);alert('Seed failed: '+e.message);}
+            }} className="w-full bg-orange-50 text-orange-600 border-2 border-orange-100 px-4 py-2.5 rounded-2xl font-black text-[10px] uppercase hover:bg-orange-500 hover:text-white transition-all">🏠 Seed Home Exercises (44)</button>
           </aside>
 
           <section className={`${bg} border-2 p-5 rounded-[2.5rem] shadow-xl min-h-[70vh]`}>
@@ -721,25 +889,25 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {exercises.map(ex=>(
                               <div key={ex.id} className="rounded-[1.25rem] bg-white border border-slate-100 p-4 shadow-sm hover:border-emerald-300 transition-all group">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <p className="font-black text-slate-900 truncate">{formatName(ex.name)}</p>
-                                      {ex.gifUrl&&<span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">GIF</span>}
-                                    </div>
+                                <div className="flex items-start gap-3">
+                                  {ex.gifUrl&&<img src={ex.gifUrl} alt={ex.name} className="w-12 h-12 rounded-xl object-cover border border-slate-100 shrink-0"/>}
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-black text-slate-900">{formatName(ex.name)}</p>
                                     <p className="text-[10px] text-slate-500 font-black uppercase">{getExerciseMuscle(ex)} · {getExerciseEquipment(ex)} · {ex.category || 'RESISTANCE'}</p>
-                                    <div className="flex flex-wrap gap-1 mt-3">
-                                      {ex.sets&&<span className="text-[10px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-600">{ex.sets} sets</span>}
-                                      {ex.reps&&<span className="text-[10px] font-black px-3 py-1 rounded-full bg-slate-100 text-slate-600">{ex.reps} reps</span>}
-                                      {ex.tempo&&<span className="text-[10px] font-black px-3 py-1 rounded-full bg-slate-100 text-slate-600">{ex.tempo}</span>}
-                                    </div>
-                                    {ex.description&&<p className="text-xs text-slate-500 mt-3 leading-relaxed">{ex.description}</p>}
-                                    <div className="flex gap-2 shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                      <button onClick={()=>setEditingExercise(ex)} className="text-blue-400 font-black text-[10px] bg-blue-50 px-3 py-2 rounded-xl hover:bg-blue-500 hover:text-white transition-all">Edit</button>
-                                      <button onClick={()=>deleteDoc(doc(db,'artifacts',appId,'public','data','library',ex.id))} className="text-red-400 font-black text-[10px] bg-red-50 px-3 py-2 rounded-xl hover:bg-red-500 hover:text-white transition-all">Del</button>
-                                    </div>
                                   </div>
                                 </div>
+                                <div className="flex items-center justify-between gap-3 mt-3">
+                                  <div className="flex flex-wrap gap-1">
+                                    {ex.sets&&<span className="text-[10px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-600">{ex.sets} sets</span>}
+                                    {ex.reps&&<span className="text-[10px] font-black px-3 py-1 rounded-full bg-slate-100 text-slate-600">{ex.reps} reps</span>}
+                                    {ex.tempo&&<span className="text-[10px] font-black px-3 py-1 rounded-full bg-slate-100 text-slate-600">{ex.tempo}</span>}
+                                  </div>
+                                  <div className="flex gap-2 shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                    <button onClick={()=>setEditingExercise(ex)} className="text-blue-400 font-black text-[10px] bg-blue-50 px-3 py-2 rounded-xl hover:bg-blue-500 hover:text-white transition-all">Edit</button>
+                                    <button onClick={()=>deleteDoc(doc(db,'artifacts',appId,'public','data','library',ex.id))} className="text-red-400 font-black text-[10px] bg-red-50 px-3 py-2 rounded-xl hover:bg-red-500 hover:text-white transition-all">Del</button>
+                                  </div>
+                                </div>
+                                {ex.description&&<p className="text-xs text-slate-500 mt-3 leading-relaxed">{ex.description}</p>}
                               </div>
                             ))}
                           </div>
@@ -754,258 +922,197 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
         </div>
       )}
       {/* PLAN */}
-      {activeTab==='plan'&&(
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* LEFT: Assign Form */}
-          <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl space-y-3`}>
-            <h4 className={`font-black text-base border-b pb-3 ${tx} border-slate-200`}>Assign Session</h4>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={addWeek} disabled={!targetClient} className="bg-white border-2 border-slate-200 text-slate-700 px-3 py-2 rounded-2xl font-black text-xs uppercase disabled:opacity-40">+ New Week</button>
-              <button onClick={()=>addNextDay(selectedWeek)} disabled={!selectedWeek} className="bg-white border-2 border-slate-200 text-slate-700 px-3 py-2 rounded-2xl font-black text-xs uppercase disabled:opacity-40">+ New Day</button>
-            </div>
-            <ClientSelector clientNames={clientNames} value={targetClient} onChange={phone=>{setTargetClient(phone);setAnalyticsClient(phone);setSessionName('');setSelectedWeek('Week 1');}} placeholder="Select Client..."/>
-            {targetClient&&clientNames[targetClient]&&(
-              <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-sm" style={{backgroundColor: PHASE_COLORS[clientNames[targetClient]?.nasm_phase || 1]}}>{clientNames[targetClient]?.nasm_phase || 1}</div>
-                <div className="text-left">
-                  <p className="font-black text-sm text-slate-900">{titleCase(clientNames[targetClient]?.name||targetClient)}</p>
-                  <p className="text-[10px] text-slate-500">{NASM_OPT_PHASES[clientNames[targetClient]?.nasm_phase || 1]?.phase}</p>
+      {activeTab==='program'&&(
+        <div className="flex bg-white border-2 border-slate-200 rounded-2xl p-1 mb-4 max-w-md">
+          <button onClick={()=>setProgramSubTab('plan')} className={`flex-1 text-xs font-black py-2.5 rounded-xl uppercase transition-colors ${programSubTab==='plan'?'bg-slate-900 text-emerald-400':'text-slate-500'}`}>Plan</button>
+          <button onClick={()=>setProgramSubTab('add')} className={`flex-1 text-xs font-black py-2.5 rounded-xl uppercase transition-colors ${programSubTab==='add'?'bg-slate-900 text-emerald-400':'text-slate-500'}`}>Add Program</button>
+        </div>
+      )}
+
+      {activeTab==='program'&&programSubTab==='plan'&&(
+        <div className="space-y-4">
+          <div className={`${bg} border-2 p-5 rounded-[2rem] shadow-xl`}>
+            <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-4 items-start">
+              <div>
+                <h3 className={`font-black text-base ${tx} mb-3`}>Client Plan</h3>
+                <ClientSelector
+                  clientNames={clientNames}
+                  value={targetClient}
+                  onChange={phone=>{setTargetClient(phone);setAnalyticsClient(phone);setSessionName('');setSelectedWeek('Week 1');}}
+                  placeholder="Select Client..."
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Client</p>
+                  <p className="text-xs font-black text-slate-900 truncate">{targetClient ? titleCase(clientNames[targetClient]?.name||targetClient) : '-'}</p>
                 </div>
-                {clientDays.length>0&&(
-                  <div className="ml-auto flex gap-1 flex-wrap justify-end">
-                    {clientDays.map(d=>(
-                      <button key={d} onClick={()=>setSessionName(d)} className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${sessionName===d?'bg-slate-900 text-emerald-400':'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{d}</button>
+                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Weeks</p>
+                  <p className="text-lg font-black text-emerald-500">{weeksStructure.length}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Exercises</p>
+                  <p className="text-lg font-black text-emerald-500">{targetClient ? workouts.filter(w=>w.assignedTo===targetClient).length : 0}</p>
+                </div>
+              </div>
+            </div>
+
+            {targetClient&&clientNames[targetClient]&&(
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase">
+                  Phase {clientNames[targetClient]?.nasm_phase || 1}
+                </span>
+                <span className="px-3 py-1 rounded-xl bg-slate-50 text-slate-600 border border-slate-100 text-[10px] font-black uppercase">
+                  {NASM_OPT_PHASES[clientNames[targetClient]?.nasm_phase || 1]?.phase}
+                </span>
+                {clientNames[targetClient]?.goal&&(
+                  <span className="px-3 py-1 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-black uppercase">
+                    {clientNames[targetClient].goal}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.15fr] gap-4">
+            <div className="space-y-4">
+              <div className={`${bg} border-2 p-5 rounded-[2rem] shadow-xl`}>
+                <div className={`flex items-center justify-between gap-3 border-b pb-3 mb-3 ${tx} border-slate-200`}>
+                  <h3 className="font-black text-base text-left">Program Tools</h3>
+                  <button onClick={addWeek} disabled={!targetClient} className="bg-emerald-500 disabled:opacity-40 text-white px-3 py-1.5 rounded-xl font-black text-xs uppercase shadow-md active:scale-95 transition-all">+ Week</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2">
+                  <select value={templateName} onChange={e=>setTemplateName(e.target.value)} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`}>
+                    {Object.keys(WORKOUT_TEMPLATES).map(name=><option key={name} value={name}>{name}</option>)}
+                  </select>
+                  <button onClick={applyTemplate} disabled={!targetClient} className="bg-slate-900 disabled:opacity-40 text-emerald-400 px-4 py-3 rounded-2xl text-xs font-black uppercase">Apply Template</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 mt-2">
+                  <ClientSelector clientNames={clientNames} value={copyFromClient} onChange={setCopyFromClient} placeholder="Source Client..."/>
+                  <button onClick={copyProgram} disabled={!targetClient||!copyFromClient} className="bg-amber-500 disabled:opacity-40 text-white px-4 py-3 rounded-2xl text-xs font-black uppercase">Copy Program</button>
+                </div>
+              </div>
+
+              <div className={`${bg} border-2 p-5 rounded-[2rem] shadow-xl`}>
+                <div className={`flex items-center justify-between gap-3 border-b pb-3 mb-3 ${tx} border-slate-200`}>
+                  <h3 className="font-black text-base text-left">Plan Structure</h3>
+                  <span className="text-[10px] font-black text-slate-400 uppercase">{selectedWeek || 'No week'} / {sessionName || 'No day'}</span>
+                </div>
+                {!targetClient ? (
+                  <p className={`text-xs font-black ${sub} text-center py-8`}>Select a client to view their plan</p>
+                ) : weeksStructure.length===0 ? (
+                  <p className={`text-xs font-black ${sub} text-center py-8`}>No weeks registered for this client</p>
+                ) : (
+                  <div className="space-y-2">
+                    {weeksStructure.map(week=>(
+                      <div key={week.id} className="border-2 border-slate-100 rounded-2xl overflow-hidden">
+                        <div className="flex items-center justify-between bg-slate-900 text-emerald-400 px-4 py-2.5 gap-2">
+                          <button onClick={()=>setExpandedWeeks(prev=>({...prev,[week.id]:!prev[week.id]}))} className="flex items-center gap-2 font-black text-sm flex-1 text-left">
+                            <span>{expandedWeeks[week.id] ? '-' : '+'}</span>
+                            <span>{week.title}</span>
+                            <span className="text-[10px] text-emerald-300/60">({week.days.length} days)</span>
+                          </button>
+                          <button onClick={()=>addNextDay(week.id)} className="px-2 py-1 rounded-lg bg-emerald-500 text-white font-black text-[10px] uppercase hover:bg-emerald-400 transition-all">Day +</button>
+                          <button onClick={()=>deleteWeek(week.id)} className="px-2 py-1 rounded-lg bg-red-500 text-white font-black text-[10px] uppercase hover:bg-red-600 transition-all">Delete Week</button>
+                        </div>
+                        {expandedWeeks[week.id]&&(
+                          <div className="p-2 space-y-1 bg-slate-50">
+                            {week.days.length===0 ? (
+                              <p className="text-[10px] font-black text-slate-400 text-center py-2">No days yet</p>
+                            ) : week.days.map(day=>{
+                              const isSel = sessionName===day.title&&selectedWeek===week.id;
+                              return (
+                                <button key={`${week.id}||${day.title}`} onClick={()=>{setSelectedWeek(week.id);setSessionName(day.title);}} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all text-left ${isSel?'bg-emerald-500 text-white':'bg-white border border-slate-100 text-slate-700 hover:border-emerald-300'}`}>
+                                  <span className="font-black text-xs">{day.title}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-[10px] font-black ${isSel?'text-emerald-100':'text-slate-400'}`}>{day.count} Exercise</span>
+                                    <span onClick={e=>{e.stopPropagation();deleteDay(day.title,week.id);}} className={`px-2 py-1 rounded-lg text-[10px] font-black cursor-pointer transition-all ${isSel?'bg-emerald-600 text-white hover:bg-red-500':'bg-red-50 text-red-500 hover:bg-red-500 hover:text-white'}`}>Delete Day</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
-            )}
-            <input type="text" placeholder="Day Num" value={sessionName} onChange={e=>setSessionName(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
-            <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-              <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Current Scope</p>
-              <div className="flex items-center justify-between gap-3 text-xs font-black text-slate-700">
-                <span className="truncate">{selectedWeek || 'No week selected'}</span>
-                <span className="truncate">{sessionName || 'No day selected'}</span>
-              </div>
-            </div>
-            <div className="rounded-2xl border-2 border-violet-100 bg-violet-50 p-4 space-y-3">
-              <div className="flex justify-between items-center gap-2">
-                <h4 className="font-black text-sm text-slate-900">Workout Templates</h4>
-                <button onClick={applyTemplate} className="bg-violet-500 text-white px-2 py-1 rounded-xl text-sm font-black">Apply</button>
-              </div>
-              <select value={templateName} onChange={e=>setTemplateName(e.target.value)} className="w-full p-2 bg-white border-2 border-violet-100 rounded-xl font-black text-sm outline-none focus:border-violet-500">
-                {Object.keys(WORKOUT_TEMPLATES).map(name=><option key={name} value={name}>{name}</option>)}
-              </select>
-            </div>
-            <div className="rounded-2xl border-2 border-amber-100 bg-amber-50 p-4 space-y-3">
-              <div className="flex justify-between items-center gap-2">
-                <h4 className="font-black text-sm text-slate-900">Copy Program</h4>
-                <button onClick={copyProgram} className="bg-amber-500 text-white px-2 py-1 rounded-xl text-sm font-black">Copy</button>
-              </div>
-              <ClientSelector clientNames={clientNames} value={copyFromClient} onChange={setCopyFromClient} placeholder="Source Client..."/>
             </div>
 
-            <SearchableDropdown options={libraryData} value={newEx.name} onChange={v=>{
-              const libEx = libraryData.find(l=>l.name===v);
-              const nextEx = {...newEx, name:v, category:libEx?.category||newEx.category, muscleGroup:libEx?getExerciseMuscle(libEx):getMuscleGroup(v)||newEx.muscleGroup};
-              setNewEx({...nextEx, alternatives: normalizeAlternatives(libEx?.alternatives?.length ? libEx.alternatives : applySuggestedAlternatives(nextEx, newEx.alternatives, libraryData))});
-            }} placeholder="Search or add exercise..." allowNew={true}/>
-            <div className="grid grid-cols-2 gap-2">
-              <input type="number" placeholder="Sets" value={newEx.sets} onChange={e=>setNewEx({...newEx,sets:e.target.value})} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
-              <input type="text" placeholder="Reps" value={newEx.reps} onChange={e=>setNewEx({...newEx,reps:e.target.value})} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <select value={newEx.category} onChange={e=>{
-                const nextEx = {...newEx, category:e.target.value, muscleGroup:e.target.value==='CARDIO'&&!MUSCLE_GROUPS.includes(newEx.muscleGroup)?'Other':newEx.muscleGroup};
-                setNewEx({...nextEx, alternatives:getFilledAlternatives(newEx.alternatives).length?newEx.alternatives:applySuggestedAlternatives(nextEx,newEx.alternatives,libraryData)});
-              }} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`}>
-                {CATEGORIES.map(cat=><option key={cat} value={cat}>{cat}</option>)}
-              </select>
-              <select value={newEx.muscleGroup} onChange={e=>{
-                const nextEx = {...newEx, muscleGroup:e.target.value};
-                setNewEx({...nextEx, alternatives:getFilledAlternatives(newEx.alternatives).length?newEx.alternatives:applySuggestedAlternatives(nextEx,newEx.alternatives,libraryData)});
-              }} className={`w-full p-3 border-2 rounded-xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}>
-                {MUSCLE_GROUPS.map(m=><option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <input type="text" placeholder="Tempo" value={newEx.tempo} onChange={e=>setNewEx({...newEx,tempo:e.target.value})} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
-            <input type="text" placeholder="Coach Note (optional)" value={newEx.coachNote} onChange={e=>setNewEx({...newEx,coachNote:e.target.value})} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
-            <div className="rounded-2xl border-2 border-blue-100 bg-blue-50/50 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] font-black text-blue-600 uppercase">Client Alternatives</p>
-                <button type="button" onClick={()=>setNewEx({...newEx, alternatives: applySuggestedAlternatives(newEx, newEx.alternatives, libraryData)})} className="bg-blue-600 text-white px-3 py-1.5 rounded-xl font-black text-[10px] uppercase hover:bg-blue-700 transition-all">Suggest</button>
-              </div>
-              {normalizeAlternatives(newEx.alternatives).map((alt, i) => (
-                <div key={alt.id} className="grid grid-cols-2 gap-2">
-                  {i < 2 ? (
-                    <select value={alt.name} onChange={e=>{
-                      const selected = getAlternativeOptions(newEx, alt.name, libraryData).find(o=>o.name===e.target.value);
-                      const alternatives = normalizeAlternatives(newEx.alternatives);
-                      alternatives[i] = {...alternatives[i], name:e.target.value, reason:selected?.reason||alternatives[i].reason, gifUrl:selected?.gifUrl||'', videoUrl:selected?.videoUrl||''};
-                      setNewEx({...newEx, alternatives});
-                    }} className={`p-2 border rounded-xl font-black text-xs outline-none focus:border-blue-500 ${inp}`}>
-                      <option value="">{`Suggestion ${i + 1}`}</option>
-                      {getAlternativeOptions(newEx, alt.name, libraryData).map(o=>(
-                        <option key={`${i}-${o.name}`} value={o.name}>{o.name}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input type="text" placeholder="Manual alternative" value={alt.name} onChange={e=>{
-                      const alternatives = normalizeAlternatives(newEx.alternatives);
-                      alternatives[i] = {...alternatives[i], name:e.target.value};
-                      setNewEx({...newEx, alternatives});
-                    }} className={`p-2 border rounded-xl font-black text-xs outline-none focus:border-blue-500 ${inp}`}/>
-                  )}
-                  <input type="text" placeholder="Equipment / Reason" value={alt.reason} onChange={e=>{
-                    const alternatives = normalizeAlternatives(newEx.alternatives);
-                    alternatives[i] = {...alternatives[i], reason:e.target.value};
-                    setNewEx({...newEx, alternatives});
-                  }} className={`p-2 border rounded-xl font-black text-xs outline-none focus:border-blue-500 ${inp}`}/>
+            <div className="space-y-4">
+              <div className={`${bg} border-2 p-5 rounded-[2rem] shadow-xl`}>
+                <div className={`flex items-center justify-between gap-3 border-b pb-3 mb-3 ${tx} border-slate-200`}>
+                  <h3 className="font-black text-base text-left">Day Details</h3>
+                  <span className="text-[10px] font-black text-emerald-500 uppercase">{selectedDayWorkouts.length} exercises</span>
                 </div>
-              ))}
-            </div>
-            <button onClick={async()=>{
-              if(!targetClient||!newEx.name) return;
-              const libEx=libraryData.find(l=>l.name===newEx.name);
-              await addDoc(collection(db,'artifacts',appId,'public','data','workouts'),{
-                ...newEx,
-                muscleGroup:libEx?getExerciseMuscle(libEx):newEx.muscleGroup||getMuscleGroup(newEx.name)||'Other',
-                alternatives:getFilledAlternatives(newEx.alternatives),
-                gifUrl:libEx?.gifUrl||'',
-                videoUrl:libEx?.videoUrl||'',
-                assignedTo:targetClient,
-                week:selectedWeek,
-                day:sessionName,
-                orderIndex:Date.now()
-              });
-              setNewEx({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'',alternatives:makeDefaultAlternatives()});
-              alert('Assigned \u2705');
-            }} className="w-full bg-slate-900 text-emerald-400 py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all">Assign Workout +</button>
-            <button onClick={()=>setNewEx({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'**NEW**',alternatives:makeDefaultAlternatives()})} className="w-full bg-blue-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">- New Exercise</button>
-          </div>
-              
-
-          {/* RIGHT: Plan Structure + Plan View + Archive */}
-          <div className="space-y-5">
-            {/* Plan Structure: Weeks > Days accordion */}
-            <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
-              <div className={`flex items-center justify-between gap-3 border-b pb-3 mb-3 ${tx} border-slate-200`}>
-                <h3 className="font-black text-base text-left">Plan Structure</h3>
-                <button onClick={addWeek} className="bg-emerald-500 text-white px-3 py-1.5 rounded-xl font-black text-xs uppercase shadow-md active:scale-95 transition-all">+ Week</button>
-              </div>
-              {weeksStructure.length===0 ? (
-                <p className={`text-xs font-black ${sub} text-center py-6`}>Select a client or apply a template to build the plan</p>
-              ) : (
-                <div className="space-y-2">
-                  {weeksStructure.map(week=>(
-                    <div key={week.id} className="border-2 border-slate-100 rounded-2xl overflow-hidden">
-                      <div className="flex items-center justify-between bg-slate-900 text-emerald-400 px-4 py-2.5">
-                          <button onClick={()=>setExpandedWeeks(prev=>({...prev,[week.id]:!prev[week.id]}))} className="flex items-center gap-2 font-black text-sm flex-1 text-left">
-                          <span>{expandedWeeks[week.id] ? '-' : '+'}</span>
-                          <span>{week.title}</span>
-                          <span className="text-[10px] text-emerald-300/60">({week.days.length} days)</span>
-                        </button>
-                        <button onClick={()=>addNextDay(week.id)} className="w-6 h-6 rounded-lg bg-emerald-500 text-white font-black text-xs hover:bg-emerald-400 transition-all" title={`Add day to ${week.title}`}>+</button>
-                      </div>
-                      {expandedWeeks[week.id]&&(
-                        <div className="p-2 space-y-1 bg-slate-50">
-                          {week.days.length===0 ? (
-                            <p className="text-[10px] font-black text-slate-400 text-center py-2">No days yet - click + to add</p>
-                          ) : week.days.map(day=>{
-                            const isSel = sessionName===day.title&&selectedWeek===week.id;
-                            return (
-                              <button key={`${week.id}||${day.title}`} onClick={()=>{setSelectedWeek(week.id);setSessionName(day.title);}} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all text-left ${isSel?'bg-emerald-500 text-white':'bg-white border border-slate-100 text-slate-700 hover:border-emerald-300'}`}>
-                                <span className="font-black text-xs">{day.title}</span>
-                                <div className="flex items-center gap-10">
-                                  <span className={`text-[10px] font-black ${isSel?'text-emerald-100':'text-slate-400'}`}>{day.count} Exercise</span>
-                                  <span onClick={e=>{e.stopPropagation();deleteDay(day.title,week.id);}} className={`w-7 h-7 rounded flex items-center justify-center text-[10px] font-black cursor-pointer transition-all ${isSel?'bg-emerald-600 text-white hover:bg-red-500':'bg-red-50 text-red-400 hover:bg-red-500 hover:text-white'}`}>Delete</span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Plan View */}
-            <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
-              <h3 className={`font-black text-base border-b pb-3 mb-3 text-left ${tx} border-slate-200`}>
-                Plan View: <span className="text-emerald-500 break-words">{sessionName&&selectedWeek?`${selectedWeek} / ${sessionName}`:''}</span>
-              </h3>
-              <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
-                {workouts
-                  .filter(w=>w.assignedTo===targetClient&&w.day===sessionName&&(w.week||'Week 1')===selectedWeek)
-                  .sort((a,b)=>a.orderIndex-b.orderIndex)
-                  .map((ex,idx,arr)=>(
-                    <ExerciseEditRow key={ex.id} exercise={ex} idx={idx} arr={arr} db={db} appId={appId} libraryData={libraryData}/>
-                  ))
-                }
-                {workouts.filter(w=>w.assignedTo===targetClient&&w.day===sessionName&&(w.week||'Week 1')===selectedWeek).length===0&&(
-                  <p className={`text-xs font-black ${sub} text-center py-8`}>No exercises assigned</p>
+                {!targetClient ? (
+                  <p className={`text-xs font-black ${sub} text-center py-8`}>Select a client first</p>
+                ) : !sessionName ? (
+                  <p className={`text-xs font-black ${sub} text-center py-8`}>Select a day from the plan structure</p>
+                ) : selectedDayWorkouts.length===0 ? (
+                  <p className={`text-xs font-black ${sub} text-center py-8`}>No exercises registered for {selectedWeek} / {sessionName}</p>
+                ) : (
+                  <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
+                    {selectedDayWorkouts.map((ex,idx,arr)=>(
+                      <ExerciseEditRow key={ex.id} exercise={ex} idx={idx} arr={arr} db={db} appId={appId} libraryData={libraryData}/>
+                    ))}
+                  </div>
                 )}
               </div>
-            </div>
 
-            {/* Performance Archive */}
-            <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-black text-sm border-b pb-3 text-left text-emerald-500 border-slate-200 flex-1">Performance Archive</h3>
-              </div>
-              {!analyticsClient
-                ?<p className={`text-xs font-black ${sub} text-center py-8`}>Select a client to view history</p>
-                :<div className="space-y-2 max-h-64 overflow-y-auto">
-                  {archiveGroups.length===0
-                    ?<p className={`text-xs font-black ${sub} text-center py-8`}>No records yet</p>
-                    :archiveGroups.map(([date,entries])=>(
-                      <div key={date}>
-                        <button onClick={()=>setExpandedDate(expandedDate===date?null:date)} className={`w-full grid grid-cols-[1fr_auto_auto] items-center gap-3 p-3 rounded-xl font-black text-xs hover:bg-emerald-50 transition-all ${rowbg}`}>
-                          <span className="font-black text-xs text-slate-600 text-left">{entries.length} exercises</span>
-                          <span className="font-black text-xs text-emerald-600 text-center">{date}</span>
-                          <div className="flex gap-1">
-                            <button onClick={e=>{e.stopPropagation();if(!window.confirm(`Delete ${entries.length} log(s) only for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}?`))return;deleteLogsByDate(new Date(date),db,appId,analyticsClient).then(c=>alert(`Deleted ${c} log(s) for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}`)).catch(err=>alert(err.message));}} className="bg-red-50 text-red-600 border border-red-100 px-2 py-1 rounded-lg text-[10px] font-black hover:bg-red-500 hover:text-white transition-all">Delete day</button>
-                            <span className="justify-self-end bg-blue-50 text-blue-600 border border-blue-100 px-3 py-1.5 rounded-lg text-[10px] font-black">EDIT</span>
-                          </div>
-                        </button>
-                        {expandedDate===date&&(
-                          <div className="p-2 space-y-1 bg-white">
-                            {entries.map((e,i)=>(
-                              <div key={i} className="text-xs font-bold p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between group">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1.5 mb-1">
-                                    <p className="font-black text-slate-900 truncate">{formatName(e.exerciseName)}</p>
-                                    {e.isAlternative&&<span className="text-[9px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded shrink-0">ALT</span>}
-                                  </div>
-                                  {e.isAlternative&&e.originalExerciseName&&(
-                                    <p className="text-[9px] text-slate-400 font-bold mb-1 truncate">\delete: {formatName(e.originalExerciseName)}</p>
-                                  )}
-                                  <div className="flex justify-between items-center mt-1">
-                                    <p className={`text-[9px] ${sub}`}>{e.setsData?.length||0} sets</p>
-                                    {e.setsData&&e.setsData.length>0&&<p className="text-[9px] font-black text-emerald-600">{Math.max(...e.setsData.map(s=>parseFloat(s.weight)||0))}kg</p>}
-                                    {e.rpe&&<p className="text-[9px] font-black text-amber-600">RPE {e.rpe}</p>}
-                                {e.isPR&&<span className="text-xs">-</span>}
-                              </div>
-                            </div>
-                                <button onClick={ev=>{ev.stopPropagation();if(!window.confirm(`Delete ${formatName(e.exerciseName)} only for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}?`))return;deleteLogsByExerciseAndDate(e.exerciseName,new Date(date),db,appId,analyticsClient).then(c=>alert(`Deleted ${c} log(s) for ${formatName(e.exerciseName)} on ${date}`)).catch(err=>alert(err.message));}} className="ml-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-700">Delete</button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  }
+              <div className={`${bg} border-2 p-5 rounded-[2rem] shadow-xl`}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-black text-sm border-b pb-3 text-left text-emerald-500 border-slate-200 flex-1">Performance Archive</h3>
                 </div>
-              }
+                {!analyticsClient
+                  ?<p className={`text-xs font-black ${sub} text-center py-8`}>Select a client to view history</p>
+                  :<div className="space-y-2 max-h-64 overflow-y-auto">
+                    {archiveGroups.length===0
+                      ?<p className={`text-xs font-black ${sub} text-center py-8`}>No records yet</p>
+                      :archiveGroups.map(([date,entries])=>(
+                        <div key={date}>
+                          <button onClick={()=>setExpandedDate(expandedDate===date?null:date)} className={`w-full grid grid-cols-[1fr_auto_auto] items-center gap-3 p-3 rounded-xl font-black text-xs hover:bg-emerald-50 transition-all ${rowbg}`}>
+                            <span className="font-black text-xs text-slate-600 text-left">{entries.length} exercises</span>
+                            <span className="font-black text-xs text-emerald-600 text-center">{date}</span>
+                            <button onClick={e=>{e.stopPropagation();if(!window.confirm(`Delete ${entries.length} log(s) only for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}?`))return;deleteLogsByDate(new Date(date),db,appId,analyticsClient).then(c=>alert(`Deleted ${c} log(s) for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}`)).catch(err=>alert(err.message));}} className="bg-red-50 text-red-600 border border-red-100 px-2 py-1 rounded-lg text-[10px] font-black hover:bg-red-500 hover:text-white transition-all">Delete day</button>
+                          </button>
+                          {expandedDate===date&&(
+                            <div className="p-2 space-y-1 bg-white">
+                              {entries.map((e,i)=>(
+                                <div key={i} className="text-xs font-bold p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between group">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5 mb-1">
+                                      <p className="font-black text-slate-900 truncate">{formatName(e.exerciseName)}</p>
+                                      {e.isAlternative&&<span className="text-[9px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded shrink-0">ALT</span>}
+                                    </div>
+                                    {e.isAlternative&&e.originalExerciseName&&(
+                                      <p className="text-[9px] text-slate-400 font-bold mb-1 truncate">Alternative to: {formatName(e.originalExerciseName)}</p>
+                                    )}
+                                    <div className="flex justify-between items-center mt-1">
+                                      <p className={`text-[9px] ${sub}`}>{e.setsData?.length||0} sets</p>
+                                      {e.setsData&&e.setsData.length>0&&<p className="text-[9px] font-black text-emerald-600">{Math.max(...e.setsData.map(s=>parseFloat(s.weight)||0))}kg</p>}
+                                      {e.rpe&&<p className="text-[9px] font-black text-amber-600">RPE {e.rpe}</p>}
+                                      {e.isPR&&<span className="text-[9px] font-black text-amber-500">PR</span>}
+                                    </div>
+                                  </div>
+                                  <button onClick={ev=>{ev.stopPropagation();if(!window.confirm(`Delete ${formatName(e.exerciseName)} only for ${titleCase(clientNames[analyticsClient]?.name||analyticsClient)} on ${date}?`))return;deleteLogsByExerciseAndDate(e.exerciseName,new Date(date),db,appId,analyticsClient).then(c=>alert(`Deleted ${c} log(s) for ${formatName(e.exerciseName)} on ${date}`)).catch(err=>alert(err.message));}} className="ml-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-700">Delete</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    }
+                  </div>
+                }
+              </div>
             </div>
-           </div>
+          </div>
         </div>
       )}
-
-      {/* ADD PROGRAM */}
-      {activeTab==='addProgram'&&(
+      {activeTab==='program'&&programSubTab==='add'&&(
         <AddProgramBuilder workouts={workouts} db={db} appId={appId} clientNames={clientNames} libraryData={libraryData}/>
       )}
 
@@ -1117,20 +1224,218 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
         </div>
       )}
 
+      {/* MEASUREMENTS */}
+      {activeTab==='measurements'&&(
+        <div className="space-y-5">
+          <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+            <h3 className={`font-black text-base border-b pb-3 mb-3 ${tx} border-slate-200`}>Select Client</h3>
+            <ClientSelector clientNames={clientNames} value={analyticsClient} onChange={setAnalyticsClient} placeholder="Select Client..."/>
+          </div>
+
+          {analyticsClient&&(
+            <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+              <h3 className={`font-black text-base border-b pb-3 mb-4 ${tx} border-slate-200`}>Weight Trend</h3>
+              {clientMeasurements.filter(m=>m.weight>0).length>1?(
+                <div className="h-64 -mx-6 px-6">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={clientMeasurements.filter(m=>m.weight>0).map(m=>({date:m.createdAt?.toDate?.()?.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})||'',weight:m.weight}))}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
+                      <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false}/>
+                      <YAxis stroke="#3b82f6" fontSize={10} tickLine={false} axisLine={false} domain={['dataMin - 2','dataMax + 2']}/>
+                      <Tooltip contentStyle={{borderRadius:'16px',border:'none',boxShadow:'0 10px 25px -5px rgba(0,0,0,0.1)',background:'#fff'}}/>
+                      <Line type="monotone" dataKey="weight" name="Weight (kg)" stroke="#3b82f6" strokeWidth={3} dot={{r:5,fill:'#3b82f6',strokeWidth:2,stroke:'#fff'}}/>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ):(
+                <div className="h-40 flex items-center justify-center">
+                  <p className={`text-sm font-black ${sub} text-center`}>Need at least 2 logged weights to show a trend</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {analyticsClient&&(
+            <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+              <h3 className={`font-black text-base border-b pb-3 mb-4 ${tx} border-slate-200`}>Log History</h3>
+              {clientMeasurements.length===0?(
+                <p className={`text-sm font-bold ${sub} text-center py-6`}>No measurements logged by this client yet</p>
+              ):(
+                <div className="space-y-2">
+                  {[...clientMeasurements].reverse().map(m=>(
+                    <div key={m.id} className={`${rowbg} border-2 rounded-2xl p-3 flex flex-wrap items-center gap-x-4 gap-y-1`}>
+                      <p className={`text-xs font-black ${sub} w-full sm:w-auto`}>{m.createdAt?.toDate?.()?.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})||'—'}</p>
+                      {m.weight>0 && <p className={`text-sm font-bold ${tx}`}>Weight: <span className="font-black">{m.weight}kg</span></p>}
+                      {m.bodyFat!=null && <p className={`text-sm font-bold ${tx}`}>Body Fat: <span className="font-black">{m.bodyFat}%</span></p>}
+                      {m.waist!=null && <p className={`text-sm font-bold ${tx}`}>Waist: <span className="font-black">{m.waist}cm</span></p>}
+                      {m.chest!=null && <p className={`text-sm font-bold ${tx}`}>Chest: <span className="font-black">{m.chest}cm</span></p>}
+                      {m.arm!=null && <p className={`text-sm font-bold ${tx}`}>Arm: <span className="font-black">{m.arm}cm</span></p>}
+                      {m.thigh!=null && <p className={`text-sm font-bold ${tx}`}>Thigh: <span className="font-black">{m.thigh}cm</span></p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* UPDATES */}
+      {activeTab==='updates'&&(
+        <div className="space-y-5">
+          <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+            <h3 className={`font-black text-base border-b pb-3 mb-4 ${tx} border-slate-200`}>Post New Update</h3>
+            <div className="space-y-2 mb-3">
+              <input value={updateForm.title} onChange={e=>setUpdateForm({...updateForm,title:e.target.value})} placeholder="Update title (e.g. New: Body Measurements)" className={`w-full ${inp} border-2 rounded-xl px-3 py-2.5 text-sm font-bold ${tx}`}/>
+              <textarea value={updateForm.message} onChange={e=>setUpdateForm({...updateForm,message:e.target.value})} placeholder="What's new + why the client should try it..." rows={4} className={`w-full ${inp} border-2 rounded-xl px-3 py-2.5 text-sm font-bold ${tx}`}/>
+            </div>
+            <button onClick={handlePostUpdate} disabled={postingUpdate||!updateForm.title.trim()||!updateForm.message.trim()} className="w-full bg-blue-600 disabled:opacity-40 text-white font-black text-sm py-3 rounded-xl">
+              {postingUpdate?'Posting...':'Post Update to All Clients'}
+            </button>
+          </div>
+
+          <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+            <h3 className={`font-black text-base border-b pb-3 mb-4 ${tx} border-slate-200`}>Update History</h3>
+            {appUpdates.length===0?(
+              <p className={`text-sm font-bold ${sub} text-center py-6`}>No updates posted yet</p>
+            ):(
+              <div className="space-y-2">
+                {appUpdates.map(u=>(
+                  <div key={u.id} className={`${rowbg} border-2 rounded-2xl p-3`}>
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className={`text-sm font-black ${tx}`}>{u.title}</p>
+                      <button onClick={()=>handleDeleteUpdate(u.id)} className="text-red-500 text-xs font-black shrink-0">✕</button>
+                    </div>
+                    <p className={`text-xs font-semibold ${sub} whitespace-pre-line mb-1`}>{u.message}</p>
+                    <p className="text-[10px] font-bold text-slate-400">{u.createdAt?.toDate?.()?.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})||''}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* NUTRITION — placeholder, structure TBD after NASM nutrition study */}
+      {activeTab==='nutrition'&&(
+        <div className="space-y-5">
+          <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+            <h3 className={`font-black text-base border-b pb-3 mb-3 ${tx} border-slate-200`}>Select Client</h3>
+            <ClientSelector clientNames={clientNames} value={analyticsClient} onChange={setAnalyticsClient} placeholder="Select Client..."/>
+          </div>
+          <div className={`${bg} border-2 border-dashed p-10 rounded-[2.5rem] text-center`}>
+            <p className={`font-black text-sm ${sub}`}>Nutrition module coming soon</p>
+          </div>
+        </div>
+      )}
+
+      {/* QUESTIONNAIRE */}
+      {activeTab==='questionnaire'&&(
+        <div className="space-y-5">
+          <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+            <h3 className={`font-black text-base border-b pb-3 mb-3 ${tx} border-slate-200`}>Select Client</h3>
+            <ClientSelector clientNames={clientNames} value={analyticsClient} onChange={setAnalyticsClient} placeholder="Select Client..."/>
+          </div>
+
+          {analyticsClient && !clientQuestionnaire && (
+            <div className={`${bg} border-2 border-dashed p-10 rounded-[2.5rem] text-center`}>
+              <p className={`font-black text-sm ${sub}`}>This client hasn't filled the questionnaire yet</p>
+            </div>
+          )}
+
+          {analyticsClient && clientQuestionnaire && QUESTIONNAIRE.screens.map(screen=>(
+            <div key={screen.screenId} className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`} dir="rtl">
+              <h3 className={`font-black text-base border-b pb-3 mb-4 ${tx} border-slate-200`}>{screen.screenTitle}</h3>
+              <div className="space-y-3">
+                {screen.fields.map(field=>{
+                  const v = clientQuestionnaire.answers?.[field.id];
+                  const display = v===undefined||v===null||v===''
+                    ? '—'
+                    : field.type==='boolean' ? (v?'نعم':'لا') : String(v);
+                  return (
+                    <div key={field.id} className={`${rowbg} border-2 rounded-2xl p-3`}>
+                      <p className={`text-[11px] font-bold ${sub} mb-1 leading-snug`}>{field.label}</p>
+                      <p className={`text-sm font-black ${tx} whitespace-pre-line`}>{display}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* NOTES */}
       {activeTab==='notes'&&(
         <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
           <div className="flex items-center justify-between gap-3 mb-4">
             <div>
-              <h3 className={`font-black text-base ${tx}`}>Client Notes</h3>
-              <p className="text-[12px] font-black text-slate-400 uppercase">{unreadNotesCount} unread · {notes.length} total</p>
+              <h3 className={`font-black text-base ${tx}`}>{notesView==='notes'?'Client Notes':'Leads'}</h3>
+              <p className="text-[12px] font-black text-slate-400 uppercase">
+                {notesView==='notes' ? `${unreadNotesCount} unread · ${notes.length} total` : `${leads.length} pending`}
+              </p>
             </div>
             <div className="flex gap-2">
-              <button onClick={()=>setNotesFilter('unread')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${notesFilter==='unread'?'bg-slate-900 text-emerald-400':'bg-slate-100 text-slate-500'}`}>Unread</button>
-              <button onClick={()=>setNotesFilter('all')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${notesFilter==='all'?'bg-slate-900 text-emerald-400':'bg-slate-100 text-slate-500'}`}>All</button>
+              <button onClick={()=>setNotesView('notes')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${notesView==='notes'?'bg-slate-900 text-emerald-400':'bg-slate-100 text-slate-500'}`}>Notes</button>
+              <button onClick={()=>setNotesView('leads')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all relative ${notesView==='leads'?'bg-slate-900 text-emerald-400':'bg-slate-100 text-slate-500'}`}>
+                Leads
+                {leads.length>0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">{leads.length}</span>}
+              </button>
             </div>
           </div>
-          {visibleNotes.length===0 ? (
+
+          {notesView==='leads' && (
+            leads.length===0 ? (
+              <p className={`text-xs font-black ${sub} text-center py-10`}>No leads yet</p>
+            ) : (
+              <div className="space-y-2">
+                {leads.map(lead=>{
+                  const dateLabel = lead.submittedAt?.toDate?.().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) || '';
+                  return (
+                    <div key={lead.id} className="rounded-2xl border-2 p-4 bg-blue-50 border-blue-200">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="min-w-0">
+                          <p className="font-black text-sm text-slate-900">{lead.answers?.name || 'Unnamed'}</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase mt-0.5">{lead.lang==='ar'?'AR':'EN'} · {dateLabel}</p>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button onClick={()=>setExpandedLead(expandedLead===lead.id?null:lead.id)} className="bg-slate-900 text-white text-[10px] font-black px-3 py-1.5 rounded-xl uppercase hover:bg-slate-700 transition-all">{expandedLead===lead.id?'Hide':'Review'}</button>
+                          <button onClick={()=>convertLead(lead)} className="bg-emerald-500 text-white text-[10px] font-black px-3 py-1.5 rounded-xl uppercase hover:bg-emerald-600 transition-all">Convert</button>
+                          <button onClick={()=>deleteLead(lead.id)} className="bg-red-50 text-red-500 text-[10px] font-black px-3 py-1.5 rounded-xl uppercase hover:bg-red-500 hover:text-white transition-all">Delete</button>
+                        </div>
+                      </div>
+                      <p className="text-xs font-bold text-slate-500">{lead.answers?.age?`Age ${lead.answers.age} · `:''}{lead.answers?.gender||''}</p>
+                      {expandedLead===lead.id && (
+                        <div className="mt-3 pt-3 border-t border-blue-200 space-y-2" dir={lead.lang==='ar'?'rtl':'ltr'}>
+                          {(lead.lang==='ar'?QUESTIONNAIRE:QUESTIONNAIRE_EN).screens.map(screen=>(
+                            <div key={screen.screenId}>
+                              <p className="text-[10px] font-black text-slate-400 uppercase mb-1">{screen.screenTitle}</p>
+                              <div className="space-y-1.5">
+                                {screen.fields.map(field=>{
+                                  const v = lead.answers?.[field.id];
+                                  const display = v===undefined||v===null||v===''
+                                    ? '—'
+                                    : field.type==='boolean' ? (lead.lang==='ar'?(v?'نعم':'لا'):(v?'Yes':'No')) : String(v);
+                                  return (
+                                    <div key={field.id} className="bg-white border border-blue-100 rounded-xl p-2.5">
+                                      <p className="text-[10px] font-bold text-slate-400 mb-0.5 leading-snug">{field.label}</p>
+                                      <p className="text-xs font-black text-slate-900 whitespace-pre-line">{display}</p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {notesView==='notes' && (visibleNotes.length===0 ? (
             <p className={`text-xs font-black ${sub} text-center py-10`}>{notesFilter==='unread' ? 'No unread notes 🎉' : 'No notes yet'}</p>
           ) : (
             <div className="space-y-2">
@@ -1152,21 +1457,106 @@ function TrainerDashboard({ workouts, logs, checkIns, notes, db, appId, clientNa
                         {!n.read&&(
                           <button onClick={()=>updateDoc(doc(db,'artifacts',appId,'public','data','notes',n.id),{read:true})} className="bg-emerald-500 text-white text-[10px] font-black px-3 py-1.5 rounded-xl uppercase hover:bg-emerald-600 transition-all">Mark Read</button>
                         )}
+                        <button onClick={()=>{setReplyingTo(replyingTo===n.id?null:n.id); setReplyText(n.trainerReply||'');}} className="bg-blue-50 text-blue-500 text-[10px] font-black px-3 py-1.5 rounded-xl uppercase hover:bg-blue-500 hover:text-white transition-all">{n.trainerReply?'Edit Reply':'Reply'}</button>
                         <button onClick={()=>{if(window.confirm('Delete this note?')) deleteDoc(doc(db,'artifacts',appId,'public','data','notes',n.id));}} className="bg-red-50 text-red-500 text-[10px] font-black px-3 py-1.5 rounded-xl uppercase hover:bg-red-500 hover:text-white transition-all">Delete</button>
                       </div>
                     </div>
                     <p className="text-sm font-bold text-slate-700 leading-relaxed">{n.message}</p>
+                    {n.trainerReply&&replyingTo!==n.id&&(
+                      <div className="mt-2 pt-2 border-t border-slate-200">
+                        <p className="text-[9px] font-black text-blue-400 uppercase mb-0.5">Your Reply</p>
+                        <p className="text-xs font-bold text-slate-600 leading-relaxed">{n.trainerReply}</p>
+                      </div>
+                    )}
+                    {replyingTo===n.id&&(
+                      <div className="mt-2 pt-2 border-t border-slate-200">
+                        <textarea
+                          autoFocus
+                          value={replyText}
+                          onChange={e=>setReplyText(e.target.value)}
+                          placeholder="Write a reply..."
+                          rows={2}
+                          className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none mb-2"
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={()=>{setReplyingTo(null);setReplyText('');}} className="flex-1 bg-slate-100 text-slate-500 text-[10px] font-black py-2 rounded-xl uppercase">Cancel</button>
+                          <button
+                            onClick={async()=>{
+                              if(!replyText.trim()) return;
+                              await updateDoc(doc(db,'artifacts',appId,'public','data','notes',n.id),{trainerReply:replyText.trim(),repliedAt:serverTimestamp(),replyRead:false});
+                              setReplyingTo(null);setReplyText('');
+                            }}
+                            disabled={!replyText.trim()}
+                            className="flex-1 bg-blue-500 text-white text-[10px] font-black py-2 rounded-xl uppercase disabled:opacity-40"
+                          >
+                            Send Reply
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
-          )}
+          ))}
+        </div>
+      )}
+
+      {/* SESSION MODE */}
+      {activeTab==='session'&&(
+        <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>
+          <h3 className={`font-black text-base border-b pb-3 mb-4 ${tx} border-slate-200`}>Start Live Session</h3>
+          <div className="space-y-3 max-w-md">
+            <ClientSelector
+              clientNames={clientNames}
+              value={sessionClient}
+              onChange={phone=>{setSessionClient(phone);setSessionWeek('Week 1');setSessionDay('');}}
+              placeholder="Select Client..."
+            />
+            {sessionClient && (
+              <select value={sessionWeek} onChange={e=>{setSessionWeek(e.target.value);setSessionDay('');}} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`}>
+                {sessionWeeks.length===0
+                  ? <option value="Week 1">Week 1</option>
+                  : sessionWeeks.map(wk=><option key={wk} value={wk}>{wk}</option>)}
+              </select>
+            )}
+            {sessionClient && sessionDays.length>0 && (
+              <select value={sessionDay} onChange={e=>setSessionDay(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`}>
+                <option value="">Select Day...</option>
+                {sessionDays.map(d=><option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
+            {sessionClient && sessionDays.length===0 && (
+              <p className={`text-xs font-black ${sub}`}>No workout days assigned to this client yet</p>
+            )}
+            <button
+              onClick={()=>setLiveSession(true)}
+              disabled={!sessionClient||!sessionDay}
+              className="w-full bg-emerald-500 disabled:opacity-40 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all"
+            >
+              Start Session
+            </button>
+          </div>
         </div>
       )}
 
       {showAddClient&&<AddNewClientModal onClose={()=>setShowAddClient(false)} db={db} appId={appId}/>}
       {showAddExercise&&<AddExerciseModal onClose={()=>setShowAddExercise(false)} db={db} appId={appId}/>}
       {editingExercise&&<EditExerciseModal exercise={editingExercise} onClose={()=>setEditingExercise(null)} db={db} appId={appId} collectionName="library"/>}
+
+      {liveSession && (
+        <div className="fixed inset-0 z-[999] bg-[#1E293B] overflow-y-auto">
+          <ActiveWorkoutScreen
+            navigate={()=>setLiveSession(false)}
+            goBack={()=>setLiveSession(false)}
+            params={{ day: sessionDay, weekId: sessionWeek }}
+            sessionPhases={liveSessionPhases}
+            identifier={sessionClient}
+            checkIns={checkIns.filter(ci=>ci.clientName===sessionClient)}
+            onEndWorkout={handleEndLiveSession}
+          />
+        </div>
+      )}
         </div>
       </div>
     </div>
@@ -1334,6 +1724,9 @@ function ClientView({ workouts, db, appId, identifier, allLogs }) {
 }
 
 export default function WorkoutApp() {
+  // رابط عام مستقل للاستبيان (عميل محتمل، بدون تسجيل دخول)
+  if (window.location.pathname === '/questionnaire') return <PublicIntakeForm />;
+
   const [user, setUser]             = useState(null);
   const [authStep, setAuthStep]     = useState(localStorage.getItem('gofit_user')?'authenticated':'login');
   const [identifier, setIdentifier] = useState(localStorage.getItem('gofit_user')||'');
@@ -1342,6 +1735,7 @@ export default function WorkoutApp() {
   const [allLogs, setAllLogs]       = useState([]);
   const [checkIns, setCheckIns]     = useState([]);
   const [notes, setNotes]           = useState([]);
+  const [leads, setLeads]           = useState([]);
   const [isLoading, setIsLoading]   = useState(true);
   const [clientRegistry, setClientRegistry] = useState({});
 
@@ -1374,7 +1768,12 @@ export default function WorkoutApp() {
       query(collection(db,'artifacts',APP_ID,'public','data','notes'),orderBy('createdAt','desc')),
       s=>setNotes(s.docs.map(d=>({id:d.id,...d.data()})))
     );
-    return()=>{u1();u2();u3();u4();u5();};
+    // استبيانات العملاء المحتملين (Public Intake Form) — تاب Leads جوه Notes
+    const u6=onSnapshot(
+      query(collection(db,'artifacts',APP_ID,'public','data','leads'),orderBy('submittedAt','desc')),
+      s=>setLeads(s.docs.map(d=>({id:d.id,...d.data()})))
+    );
+    return()=>{u1();u2();u3();u4();u5();u6();};
   },[user,authStep]);
 
   const clientName=clientRegistry[identifier]?.name||identifier;
@@ -1426,7 +1825,7 @@ export default function WorkoutApp() {
       </nav>
       <main className="max-w-5xl mx-auto p-0 pt-16">
         {role==='trainer'
-          ?<TrainerDashboard workouts={workouts} logs={allLogs} checkIns={checkIns} notes={notes} db={db} appId={APP_ID} clientNames={clientRegistry}/>
+          ?<TrainerDashboard workouts={workouts} logs={allLogs} checkIns={checkIns} notes={notes} leads={leads} db={db} appId={APP_ID} clientNames={clientRegistry}/>
           :<AppRouter />
         }
       </main>

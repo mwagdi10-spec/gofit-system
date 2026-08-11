@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { addDoc, collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, onSnapshot, query, where, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 import BottomNav from '../components/BottomNav';
 import { buildReadinessScore } from '../utils/analyticsTransformers';
 
@@ -26,6 +26,7 @@ export default function HomeScreen({
   const [form, setForm] = useState({ sleep: 7, energy: 7, soreness: 3, stress: 3 });
   const [saving, setSaving] = useState(false);
   const [goals, setGoals] = useState([]);
+  const [newUpdate, setNewUpdate] = useState(null);
 
   useEffect(() => {
     if (!identifier) return;
@@ -35,6 +36,26 @@ export default function HomeScreen({
     );
     return () => u();
   }, [identifier]);
+
+  // آخر تحديث للتطبيق — يظهر مرة واحدة لكل نسخة شافها العميل
+  useEffect(() => {
+    if (!identifier) return;
+    const u = onSnapshot(
+      query(collection(db, 'artifacts', appId, 'public', 'data', 'updates'), orderBy('createdAt', 'desc'), limit(1)),
+      snap => {
+        if (snap.empty) return;
+        const latest = { id: snap.docs[0].id, ...snap.docs[0].data() };
+        const seenId = localStorage.getItem(`gofit_seen_update_${identifier}`);
+        if (latest.id !== seenId) setNewUpdate(latest);
+      }
+    );
+    return () => u();
+  }, [identifier]);
+
+  function dismissUpdate() {
+    if (newUpdate) localStorage.setItem(`gofit_seen_update_${identifier}`, newUpdate.id);
+    setNewUpdate(null);
+  }
 
   // أقرب هدفين للاكتمال (مش المكتملين) لعرضهم في مختصر الهوم
   const topGoals = useMemo(() => {
@@ -86,6 +107,24 @@ export default function HomeScreen({
 
   return (
     <div className="min-h-screen bg-[#121a2a] max-w-sm mx-auto px-5 pb-24">
+
+      {/* What's New Modal */}
+      {newUpdate && (
+        <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={dismissUpdate}>
+          <div className="bg-[#1C1C38] border-2 border-blue-500/40 rounded-[2rem] w-full max-w-sm shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <p className="text-blue-400 text-xs font-black uppercase mb-2">🚀 What's New</p>
+            <h2 className="text-white text-xl font-black mb-3">{newUpdate.title}</h2>
+            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line mb-6">{newUpdate.message}</p>
+            <button
+              onClick={dismissUpdate}
+              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 rounded-2xl py-3.5 text-white font-black transition-all"
+            >
+              Got it, let's try it!
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="pt-7 mb-5 flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white leading-tight">

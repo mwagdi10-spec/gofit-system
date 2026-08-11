@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db, APP_ID } from '../services/firebase/config';
 import BottomNav from '../components/BottomNav';
 import { SendNoteBox } from '../components/shared/SendNoteBox';
+import BodyMeasurements from '../components/shared/BodyMeasurements';
+import QuestionnaireModal from '../components/shared/QuestionnaireModal';
 
 const GOALS   = ['Muscle Gain', 'Fat Loss', 'Strength', 'Endurance'];
 const METRICS = [
@@ -11,11 +13,22 @@ const METRICS = [
   { key: 'age',    label: 'Age',    suffix: 'yrs' },
 ];
 
-export default function ProfileScreen({ navigate, current, user = {}, identifier = '' }) {
+export default function ProfileScreen({ navigate, current, user = {}, identifier = '', measurements = [] }) {
   const [editing,  setEditing]  = useState(false);
   const [form,     setForm]     = useState({});
   const [goalOpen, setGoalOpen] = useState(false);
   const [saving,   setSaving]   = useState(false);
+  const [qOpen,     setQOpen]     = useState(false);
+  const [qResponse, setQResponse] = useState(null);
+
+  useEffect(() => {
+    if (!identifier) return;
+    const u = onSnapshot(
+      doc(db, 'artifacts', APP_ID, 'public', 'data', 'questionnaire_responses', identifier),
+      snap => setQResponse(snap.exists() ? snap.data() : null)
+    );
+    return () => u();
+  }, [identifier]);
 
   function startEdit() {
     setForm({
@@ -134,10 +147,35 @@ export default function ProfileScreen({ navigate, current, user = {}, identifier
           )}
         </div>
 
+        {/* Health & Lifestyle Questionnaire */}
+        {!editing && (
+          <button
+            onClick={() => setQOpen(true)}
+            className="w-full text-left bg-[#1C1C38] border border-[#2A2A50] rounded-2xl p-4 flex items-center justify-between active:scale-[0.98] transition-all"
+          >
+            <div>
+              <p className="text-white font-bold text-sm">استبيان أسلوب الحياة والتاريخ الصحي</p>
+              <p className={`text-xs mt-0.5 ${qResponse ? 'text-emerald-400' : 'text-slate-400'}`}>
+                {qResponse ? 'تم الإرسال — اضغط للتعديل' : 'لسه ما اتملاش'}
+              </p>
+            </div>
+            <span className="text-slate-500 text-lg">›</span>
+          </button>
+        )}
+
+        {/* Body Measurements */}
+        {!editing && <BodyMeasurements identifier={identifier} measurements={measurements} />}
+
         {/* Send Note to Coach */}
         {!editing && <SendNoteBox identifier={identifier} context="profile" />}
       </div>
       <BottomNav navigate={navigate} current={current} />
+      <QuestionnaireModal
+        open={qOpen}
+        onClose={() => setQOpen(false)}
+        identifier={identifier}
+        existingAnswers={qResponse?.answers || {}}
+      />
     </div>
   );
 }

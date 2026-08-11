@@ -23,8 +23,8 @@ export default function MuscleBodyMap({ recoveryMap = [] }) {
   }
 
   return (
-    <div className="bg-[#1C1C38] border border-[#2A2A50] rounded-2xl p-4">
-      <p className="text-white font-bold mb-3">Muscle Balance</p>
+    <div className="bg-[#1C1C38] border border-[#2A2A50] rounded-2xl p-3">
+      <p className="text-white font-bold mb-2">Muscle Balance</p>
 
       <div className="flex items-center justify-center">
         <svg viewBox="0 0 200 420" className="w-44 h-[21rem]">
@@ -78,7 +78,7 @@ export default function MuscleBodyMap({ recoveryMap = [] }) {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-[#2A2A50]">
+      <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-[#2A2A50]">
         {Object.entries(STATUS_LABEL).map(([key, label]) => (
           <div key={key} className="flex items-center gap-1.5 bg-[#14142B] rounded-full px-2.5 py-1">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLOR[key] }} />
@@ -89,7 +89,7 @@ export default function MuscleBodyMap({ recoveryMap = [] }) {
 
       {/* Detail card عند الضغط */}
       {active && (
-        <div className="mt-3 bg-[#14142B] border border-[#2A2A50] rounded-xl px-4 py-3 flex items-center justify-between">
+        <div className="mt-2 bg-[#14142B] border border-[#2A2A50] rounded-xl px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLOR[active.status] }} />
             <div>

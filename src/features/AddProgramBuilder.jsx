@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { addDoc, deleteDoc, doc, collection } from 'firebase/firestore';
-import { CATEGORIES, MUSCLE_GROUPS } from '../services/firebase/config';
+import { CATEGORIES, MUSCLE_GROUPS, MUSCLE_GROUP_COMBOS } from '../services/firebase/config';
 import { getExerciseMuscle } from '../utils/formatters';
 import { ClientSelector } from './ClientSelector';
 import { SearchableDropdown } from '../components/ui/SearchableDropdown';
@@ -13,6 +13,7 @@ const CATEGORY_LABELS = {
   'SKILL': 'Skill',
   'RESISTANCE': 'Resistance',
   'CARDIO': 'Cardio',
+  'HIIT': 'HIIT (Optional)',
   'COOL-DOWN': 'Static Stretches',
 };
 
@@ -28,6 +29,11 @@ export function AddProgramBuilder({ workouts, db, appId, clientNames, libraryDat
   const tx  = 'text-slate-900';
   const sub = 'text-slate-500';
   const inp = 'bg-slate-50 border-slate-200';
+
+  const muscleFilterValues = useMemo(() => {
+    if (!muscleFilter) return [];
+    return muscleFilter.startsWith('combo:') ? muscleFilter.slice(6).split(',') : [muscleFilter];
+  }, [muscleFilter]);
 
   const weeksList = useMemo(() => {
     if (!targetClient) return [];
@@ -71,10 +77,8 @@ export function AddProgramBuilder({ workouts, db, appId, clientNames, libraryDat
     const counts = buildNasmCategoryCounts({ goal: client.goal, phase: client.nasm_phase || 1 });
     const coachNote = [
       client.injuries ? `Respect injury notes: ${client.injuries}` : '',
-      client.goal ? `Goal focus: ${client.goal}` : '',
-      `NASM phase ${client.nasm_phase || 1}`,
     ].filter(Boolean).join(' · ');
-    const items = generateAutoDayItems(libraryData, { muscleFilter, categoryCounts: counts, coachNote });
+    const items = generateAutoDayItems(libraryData, { muscleFilter: muscleFilterValues, categoryCounts: counts, coachNote });
     if (!items.length) { alert('Library is empty or has no matching exercises'); setGenerating(false); return; }
     const base = Date.now();
     for (let i = 0; i < items.length; i++) {
@@ -88,9 +92,27 @@ export function AddProgramBuilder({ workouts, db, appId, clientNames, libraryDat
   const handleAddToCategory = async (category, exerciseName) => {
     const libEx = libraryData.find(l => l.name === exerciseName);
     if (!libEx) return;
+    const isCardio = category === 'CARDIO';
+    const isHiit   = category === 'HIIT';
     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'workouts'), {
       name: libEx.name, category, muscleGroup: getExerciseMuscle(libEx), gifUrl: libEx.gifUrl || '',
+      videoUrl: libEx.videoUrl || '',
       sets: '3', reps: '10', tempo: '', coachNote: '', alternatives: libEx.alternatives || [],
+      // HIIT: ينسخ إعدادات work/rest/rounds من المكتبة
+      ...(isHiit && {
+        workSeconds: libEx.workSeconds || 30,
+        restSeconds: libEx.restSeconds || 15,
+        rounds:      libEx.rounds || 8,
+      }),
+      // CARDIO: ينسخ metric + target duration/distance/calories + intervals من المكتبة
+      // (كانت دايمًا بترجع للـ default 20 دقيقة لأن الحقول دي مكانتش بتتنسخ هنا)
+      ...(isCardio && {
+        cardioMetric:   libEx.cardioMetric || 'duration',
+        targetDuration: libEx.targetDuration || 0,
+        targetDistance: libEx.targetDistance || 0,
+        targetCalories: libEx.targetCalories || 0,
+        intervals:      Array.isArray(libEx.intervals) ? libEx.intervals : [],
+      }),
       assignedTo: targetClient, week: selectedWeek, day: sessionName, orderIndex: Date.now(),
     });
     setAddingTo(null);
@@ -127,7 +149,14 @@ export function AddProgramBuilder({ workouts, db, appId, clientNames, libraryDat
           <select value={muscleFilter} onChange={e => setMuscleFilter(e.target.value)}
             className={`w-full p-2.5 border-2 rounded-xl font-black text-xs outline-none focus:border-emerald-500 ${inp}`}>
             <option value="">All Muscles (Resistance/Skill)</option>
-            {MUSCLE_GROUPS.map(m => <option key={m} value={m}>{m}</option>)}
+            <optgroup label="Combined">
+              {MUSCLE_GROUP_COMBOS.map(c => (
+                <option key={c.label} value={`combo:${c.values.join(',')}`}>{c.label}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Individual">
+              {MUSCLE_GROUPS.map(m => <option key={m} value={m}>{m}</option>)}
+            </optgroup>
           </select>
         </div>
 

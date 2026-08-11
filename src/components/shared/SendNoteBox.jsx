@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { addDoc, collection, query, where, orderBy, onSnapshot, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { db, APP_ID } from '../../services/firebase/config';
 
 // صندوق إرسال ملاحظة من العميل للمدرب — بيتسجل في Firestore (notes)
@@ -9,6 +9,27 @@ export function SendNoteBox({ identifier, context = '', theme = 'dark' }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [myNotes, setMyNotes] = useState([]);
+
+  // ملاحظاتي مع رد الترينر — realtime
+  useEffect(() => {
+    if (!identifier) return;
+    const unsub = onSnapshot(
+      query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'notes'), where('clientName', '==', identifier), orderBy('createdAt', 'desc')),
+      s => setMyNotes(s.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return unsub;
+  }, [identifier]);
+
+  const repliedNotes = myNotes.filter(n => n.trainerReply);
+  const hasUnreadReply = repliedNotes.some(n => n.replyRead === false);
+
+  async function markRepliesRead() {
+    const unread = repliedNotes.filter(n => n.replyRead === false);
+    for (const n of unread) {
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'notes', n.id), { replyRead: true });
+    }
+  }
 
   async function send() {
     if (!text.trim() || !identifier) return;
@@ -34,20 +55,35 @@ export function SendNoteBox({ identifier, context = '', theme = 'dark' }) {
   const areaCls  = isLight ? 'bg-white border-slate-200 text-slate-800 placeholder-slate-400'
                             : 'bg-[#14142B] border-[#2A2A50] text-white placeholder-slate-500';
   const cancelCls= isLight ? 'bg-slate-200 text-slate-600'           : 'bg-slate-700/40 text-slate-300';
+  const replyBoxCls = isLight ? 'bg-white border-slate-200'          : 'bg-[#14142B] border-[#2A2A50]';
 
   if (!open) {
     return (
       <button
-        onClick={() => setOpen(true)}
-        className={`w-full flex items-center justify-center gap-2 border text-xs font-black py-3 rounded-2xl transition-colors ${boxCls} ${btnCls}`}
+        onClick={() => { setOpen(true); if (hasUnreadReply) markRepliesRead(); }}
+        className={`relative w-full flex items-center justify-center gap-2 border text-xs font-black py-3 rounded-2xl transition-colors ${boxCls} ${btnCls}`}
       >
         ✉️ Send Note to Coach
+        {hasUnreadReply && (
+          <span className="absolute -top-1.5 -right-1.5 bg-red-500 w-3 h-3 rounded-full border-2 border-white" />
+        )}
       </button>
     );
   }
 
   return (
     <div className={`border rounded-2xl p-3 ${boxCls}`}>
+      {repliedNotes.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {repliedNotes.slice(0, 3).map(n => (
+            <div key={n.id} className={`border rounded-xl p-2.5 ${replyBoxCls}`}>
+              <p className={`text-[9px] font-black uppercase mb-1 ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>You: {n.message}</p>
+              <p className="text-[9px] font-black text-blue-400 uppercase mb-0.5">Coach Reply</p>
+              <p className={`text-xs font-bold leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-200'}`}>{n.trainerReply}</p>
+            </div>
+          ))}
+        </div>
+      )}
       {sent ? (
         <p className="text-emerald-500 text-xs font-black text-center py-3">✓ Sent to your coach</p>
       ) : (

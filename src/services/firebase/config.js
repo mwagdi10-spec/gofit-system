@@ -18,4 +18,11 @@ export const APP_ID       = "gofit-production";
 export const TRAINER_MAIL = "wagdi@gofit.com";
 export const CATEGORIES   = ['WARM-UP','ACTIVATION','SKILL','RESISTANCE','CARDIO','HIIT','COOL-DOWN'];
 export const MUSCLE_GROUPS = ['Abs','Back','Biceps','Chest','Forearms','Glutes','Shoulders','Triceps','Upper Legs','Lower Legs','Other'];
-export const EQUIPMENT_TYPES = ['Body Weight','Bands','Barbell','Bench','Dumbbell','Exercise Ball','EZ Curl Bar','Kettlebell','Cardio Machine','Strength Machine','Pullup Bar','Weight Plate'];
+export const MUSCLE_GROUP_COMBOS = [
+  { label: 'Upper & Lower Legs',   values: ['Upper Legs','Lower Legs'] },
+  { label: 'Chest & Triceps',      values: ['Chest','Triceps'] },
+  { label: 'Back & Biceps',        values: ['Back','Biceps'] },
+  { label: 'Shoulders & Forearms', values: ['Shoulders','Forearms'] },
+  { label: 'Glutes & Core',        values: ['Glutes','Abs'] },
+];
+export const EQUIPMENT_TYPES = ['Body Weight','Bands','Barbell','Bench','Dumbbell','Exercise Ball','EZ Curl Bar','Kettlebell','Cardio Machine','Strength Machine','Pullup Bar','Weight Plate','Home Equipment'];

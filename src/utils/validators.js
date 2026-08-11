@@ -1,135 +1,72 @@
 import { getMuscleGroup, getExerciseMuscle } from './formatters';
-
 export const makeDefaultAlternatives = () => [
-
   { id: '1', name: '', reason: '', gifUrl: '', videoUrl: '' },
-
   { id: '2', name: '', reason: '', gifUrl: '', videoUrl: '' },
-
   { id: '3', name: '', reason: '', gifUrl: '', videoUrl: '' }
-
 ];
 
-
-
 export function normalizeAlternatives(alternatives = []) {
-
   const clean = alternatives
-
     .slice(0, 3)
-
     .map((alt, idx) => ({
-
       id: alt.id || String(idx + 1),
-
       name: alt.name || '',
-
       reason: alt.reason || '',
-
       gifUrl: alt.gifUrl || '',
-
       videoUrl: alt.videoUrl || ''
-
     }));
 
   return [...clean, ...makeDefaultAlternatives().slice(clean.length)].slice(0, 3);
 
 }
 
-
-
 export function getFilledAlternatives(alternatives = []) {
-
   return normalizeAlternatives(alternatives).filter(alt => alt.name.trim());
-
 }
 
-
-
 export const ALTERNATIVE_PRESETS = {
-
   category: {
-
     CARDIO: ['Treadmill', 'Stationary Bike', 'Elliptical', 'Rowing Machine', 'Stair Climber'],
-
     'WARM-UP': ['Dynamic Stretching', 'Light Treadmill Walk', 'Bike Warm-up', 'Mobility Flow'],
-
     ACTIVATION: ['Glute Bridge', 'Dead Bug', 'Bird Dog', 'Banded Lateral Walk', 'Scapular Push-up'],
-
     SKILL: ['Goblet Squat', 'Box Squat', 'Tempo Push-up', 'Assisted Pull-up', 'Hip Hinge Drill'],
-
     RESISTANCE: ['Dumbbell Variation', 'Cable Variation', 'Machine Variation', 'Bodyweight Variation'],
-
     'COOL-DOWN': ['Static Stretching', 'Foam Rolling', 'Breathing Drill', 'Easy Bike Cool-down']
-
   },
 
   muscle: {
-
     Chest: ['Machine Chest Press', 'Dumbbell Chest Press', 'Push-up', 'Cable Fly'],
-
     Back: ['Lat Pulldown', 'Seated Cable Row', 'Single-arm Dumbbell Row', 'Assisted Pull-up'],
-
     Quads: ['Leg Press', 'Goblet Squat', 'Split Squat', 'Step Up'],
-
     Hamstrings: ['Romanian Deadlift', 'Hamstring Curl', 'Glute-ham Raise', 'Single-leg RDL'],
-
     Glutes: ['Hip Thrust', 'Glute Bridge', 'Cable Kickback', 'Banded Lateral Walk'],
-
     Shoulders: ['Machine Shoulder Press', 'Dumbbell Shoulder Press', 'Lateral Raise', 'Face Pull'],
-
     Arms: ['Cable Curl', 'Dumbbell Curl', 'Triceps Pushdown', 'Overhead Triceps Extension'],
-
     Core: ['Plank', 'Dead Bug', 'Cable Crunch', 'Pallof Press'],
-
     Cardio: ['Treadmill', 'Stationary Bike', 'Elliptical', 'Rowing Machine'],
-
     'Full Body': ['Goblet Squat', 'Kettlebell Deadlift', 'Step Up', 'Farmer Carry'],
-
     Mobility: ['World Greatest Stretch', 'Hip Flexor Stretch', 'Thoracic Rotation', 'Ankle Mobility'],
-
     Other: ['Bodyweight Variation', 'Machine Variation', 'Cable Variation']
-
   }
-
 };
 
-
-
 export function suggestAlternatives(exercise = {}, libraryData = []) {
-
   const category = exercise.category || 'RESISTANCE';
-
   const muscleGroup = exercise.muscleGroup || getMuscleGroup(exercise.name) || (category === 'CARDIO' ? 'Cardio' : 'Other');
-
   const original = (exercise.name || '').trim().toLowerCase();
-
   const libraryPool = libraryData
-
     .filter(item => {
-
       const name = (item.name || '').trim();
-
       return name && name.toLowerCase() !== original;
-
     })
-
     .sort((a,b) => {
-
       const aCategory = (a.category || 'RESISTANCE') === category ? 0 : 1;
-
       const bCategory = (b.category || 'RESISTANCE') === category ? 0 : 1;
-
       const aMuscle = getExerciseMuscle(a) === muscleGroup ? 0 : 1;
-
       const bMuscle = getExerciseMuscle(b) === muscleGroup ? 0 : 1;
-
       return aMuscle - bMuscle || aCategory - bCategory || (a.name || '').localeCompare(b.name || '');
-
     });
-
   const libraryMatches = libraryPool
-
     .filter(item => (item.category || 'RESISTANCE') === category || getExerciseMuscle(item) === muscleGroup)
 
     .map(item => ({

@@ -1,4 +1,4 @@
-import { getMuscleGroup } from '../utils/formatters';
+import { getMuscleGroup, dateFromLog, startOfDay } from '../utils/formatters';
 
 // ─────────────────────────────────────────────────────────────
 // USER
@@ -144,10 +144,12 @@ export function buildSessionPhases(workouts, day, logs = [], identifier = '', li
             id: s.id, name: s.name, category: 'COOL-DOWN',
             tempo: '', targetSets: 1, targetReps: '30', unit: 'sec',
             loggedWeight: null, loggedReps: '30', status: 'pending',
-            gifUrl: s.gifUrl || '', link: s.link || s.gifUrl || '',
+            gifUrl: s.gifUrl || '',
+            link: s.link || s.videoUrl || s.gifUrl || '',
+            videoUrl: s.videoUrl || s.link || '',
             alternatives: [], overloadMessage: '', coachNote: '',
           }))
-        : exercises.map(w => exerciseToCard(w, logs, identifier, cat));
+        : exercises.map(w => exerciseToCard(w, logs, identifier, cat, library));
 
       return {
         id:         cat.toLowerCase().replace(/[\s-]+/g, '_'),
@@ -169,7 +171,7 @@ function isLoggedToday(ts) {
          d.getDate()      === now.getDate();
 }
 
-function exerciseToCard(w, logs, identifier, cat) {
+function exerciseToCard(w, logs, identifier, cat, library = []) {
   const noLog = NO_LOG_PHASES.has(cat);
   // PR badges: Resistance only
   const pr = cat === 'RESISTANCE' ? buildPersonalRecords(w, logs, identifier) : { bestReps: 0, bestWeight: 0 };
@@ -177,6 +179,8 @@ function exerciseToCard(w, logs, identifier, cat) {
   const loggedToday = logs.find(l =>
     l.exerciseId === w.id && l.clientName === identifier && isLoggedToday(l.completedAt)
   );
+  // fallback لو الميديا اتضافت للمكتبة بعد ما التمرين اتحدد للعميل
+  const libEx = library.find(l => l.name === w.name);
   return {
     id:              w.id,
     name:            w.name,
@@ -188,11 +192,16 @@ function exerciseToCard(w, logs, identifier, cat) {
     loggedWeight:    null,
     loggedReps:      w.reps         || '10',
     status:          loggedToday ? 'saved' : 'pending',
-    gifUrl:          w.gifUrl       || '',
-    videoUrl:        w.videoUrl     || '',
+    gifUrl:          w.gifUrl       || libEx?.gifUrl   || '',
+    videoUrl:        w.videoUrl     || libEx?.videoUrl || '',
     workSeconds:     w.workSeconds  || 30,
     restSeconds:     w.restSeconds  || 15,
     rounds:          w.rounds       || 8,
+    cardioMetric:    w.cardioMetric    || 'duration',
+    targetDuration:  w.targetDuration  || 20,
+    targetDistance:  w.targetDistance  || 0,
+    targetCalories:  w.targetCalories  || 0,
+    intervals:       Array.isArray(w.intervals) ? w.intervals : [],
     alternatives:    buildAlternatives(w),
     overloadMessage: noLog ? '' : buildOverloadMsg(w, logs, identifier),
     coachNote:       w.coachNote    || '',
@@ -253,34 +262,46 @@ function buildPersonalRecords(w, logs, identifier) {
 // ─────────────────────────────────────────────────────────────
 // MUSCLE PROGRESS  (ProgressScreen)
 // ─────────────────────────────────────────────────────────────
+
+// أعلى Est. 1RM (Epley) بين كل الـ sets المسجلة في اللوج
+function bestEst1RM(log) {
+  return (log.setsData || []).reduce(
+    (max, s) => Math.max(max, Math.round((parseFloat(s.weight) || 0) * (1 + (parseFloat(s.reps) || 0) / 30))),
+    0
+  );
+}
+
 export function buildMuscleProgress(logs) {
   const MUSCLES = ['Chest','Back','Upper Legs','Lower Legs','Biceps','Triceps'];
+
+  // بداية أسبوع تقويمي ثابت (الإثنين) لأسبوع النهاردة
+  const monday = startOfDay(new Date());
+  const dow = monday.getDay();
+  monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
 
   return MUSCLES.map(muscle => {
     const muscleLogs = logs.filter(l => {
       const m = l.muscleGroup || getMuscleGroup(l.exerciseName || '');
       return m === muscle;
-    }).sort((a, b) => (a.completedAt?.toDate?.() || 0) - (b.completedAt?.toDate?.() || 0));
-
-    // weekly max weight
-    const weeks    = ['W1','W2','W3','W4'];
-    const now      = new Date();
-    const monthlyData = weeks.map((week, i) => {
-      const start = new Date(now); start.setDate(now.getDate() - (3 - i) * 7 - 7);
-      const end   = new Date(now); end.setDate(now.getDate()   - (3 - i) * 7);
-      const weekLogs = muscleLogs.filter(l => {
-        const d = l.completedAt?.toDate?.();
-        return d && d >= start && d < end;
-      });
-      const load = weekLogs.length
-        ? Math.max(...weekLogs.map(l => l.maxWeight || 0))
-        : 0;
-      return { week, load };
     });
 
-    const nonZero       = monthlyData.filter(d => d.load > 0);
-    const start_weight  = nonZero[0]?.load  || 0;
-    const current_weight= nonZero.at(-1)?.load || start_weight;
+    const weeks = ['W1','W2','W3','W4'];
+    let runningBest = 0; // تراكمي: مايرجعش للخلف أبداً
+    const monthlyData = weeks.map((week, i) => {
+      const start = new Date(monday); start.setDate(monday.getDate() - (3 - i) * 7);
+      const end   = new Date(start);  end.setDate(start.getDate() + 7);
+      const weekLogs = muscleLogs.filter(l => {
+        const d = dateFromLog(l);
+        return d && d >= start && d < end;
+      });
+      const weekBest = weekLogs.length ? Math.max(...weekLogs.map(bestEst1RM)) : 0;
+      runningBest = Math.max(runningBest, weekBest); // carry-forward
+      return { week, load: runningBest };
+    });
+
+    const nonZero        = monthlyData.filter(d => d.load > 0);
+    const start_weight   = nonZero[0]?.load || 0;
+    const current_weight = monthlyData.at(-1).load;
 
     return { name: muscle, start_weight, current_weight, monthlyData };
   }).filter(m => m.current_weight > 0);

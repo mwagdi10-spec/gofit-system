@@ -54,6 +54,7 @@ export function AlternativesModal({ exercise, onSelect, onClose }) {
 
 export function CoolDownStretchCard({ exercise, sessionFinished }) {
   const [done, setDone] = useState(false);
+  const videoHref = normalizeHref(exercise.videoUrl || exercise.link || exercise.url || '');
   const displayLink = getExerciseLink(exercise);
   useEffect(()=>{ if(sessionFinished) setDone(false); },[sessionFinished]);
 
@@ -64,15 +65,24 @@ export function CoolDownStretchCard({ exercise, sessionFinished }) {
         <p className={`font-black text-sm leading-tight ${done?'line-through text-slate-400':'text-slate-900'}`}>
           {formatName(exercise.name)}
         </p>
-        {displayLink&&(
+        {videoHref ? (
+          <a
+            href={videoHref}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full bg-red-500 text-white text-[10px] font-black uppercase hover:bg-red-600 transition-colors"
+          >
+            YouTube
+          </a>
+        ) : displayLink ? (
           <a href={normalizeHref(displayLink)} target="_blank" rel="noreferrer"
             className="text-xs text-blue-500 truncate block hover:underline mt-0.5">
             {displayLink}
           </a>
-        )}
+        ) : null}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        {displayLink&&(
+        {!videoHref && displayLink&&(
           <a href={normalizeHref(displayLink)} target="_blank" rel="noreferrer"
             className="px-3 py-1.5 border border-slate-300 text-slate-600 text-xs font-black rounded-full hover:bg-slate-50 transition-colors uppercase">
             Link

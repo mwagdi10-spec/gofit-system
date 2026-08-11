@@ -35,7 +35,7 @@ export default function AppRouter() {
     try { sessionStorage.setItem('gofit_screen', JSON.stringify({ screen: current, params })); } catch {}
   }, [current, params]);
 
-  const { workouts, logs, sessions, clientInfo, library, checkIns, loading } = useClientData(identifier);
+  const { workouts, logs, sessions, clientInfo, library, checkIns, measurements, loading } = useClientData(identifier);
 
   /* ── transformed data ──────────────────────────────────────── */
   const user          = useMemo(() => buildUser(clientInfo, logs),        [clientInfo, logs]);
@@ -165,6 +165,7 @@ export default function AppRouter() {
         {...nav}
         user={user}
         identifier={identifier}
+        measurements={measurements}
       />
     ),
     ActiveWorkout: (

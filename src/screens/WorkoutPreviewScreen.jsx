@@ -70,7 +70,7 @@ export default function WorkoutPreviewScreen({ navigate, goBack, params = {}, se
                       {ex.gifUrl && (
                         <button
                           onClick={() => openGif(ex.gifUrl)}
-                          className="w-12 h-12 rounded-lg overflow-hidden border border-slate-200 shrink-0"
+                          className="w-11 h-11 rounded-lg overflow-hidden border border-slate-200 shrink-0"
                         >
                           <img src={ex.gifUrl} alt={ex.name} className="w-full h-full object-cover" />
                         </button>
@@ -81,7 +81,7 @@ export default function WorkoutPreviewScreen({ navigate, goBack, params = {}, se
                           className="w-6 h-6 rounded-md bg-red-500 flex items-center justify-center shrink-0"
                           title="Watch on YouTube"
                         >
-                          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white"><path d="M10 15.5l6-3.5-6-3.5v7z"/><path d="M21.6 7.2c-.2-1-1-1.7-2-1.9C17.9 5 12 5 12 5s-5.9 0-7.6.3c-1 .2-1.8.9-2 1.9C2 8.9 2 12 2 12s0 3.1.4 4.8c.2 1 1 1.7 2 1.9C6.1 19 12 19 12 19s5.9 0 7.6-.3c1-.2 1.8-.9 2-1.9.4-1.7.4-4.8.4-4.8s0-3.1-.4-4.8z"/></svg>
+                          <svg viewBox="0 0 24 24" className="w-3 h-3 fill-white"><path d="M8 5v14l11-7z"/></svg>
                         </button>
                       )}
                     </div>

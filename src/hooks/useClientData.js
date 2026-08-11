@@ -12,6 +12,7 @@ export function useClientData(identifier) {
   const [clientInfo,  setClientInfo]  = useState(null);
   const [library,     setLibrary]     = useState([]);
   const [checkIns,    setCheckIns]    = useState([]);
+  const [measurements, setMeasurements] = useState([]);
   const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
@@ -73,8 +74,18 @@ export function useClientData(identifier) {
       snap => setCheckIns(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
 
-    return () => { u0(); u1(); u2(); u3(); u4(); u5(); };
+    // ── 7. Body measurements (weight / body fat / girths) ──────
+    const u6 = onSnapshot(
+      query(
+        collection(db, 'artifacts', APP_ID, 'public', 'data', 'body_measurements'),
+        where('clientName', '==', identifier),
+        orderBy('createdAt', 'asc')
+      ),
+      snap => setMeasurements(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+
+    return () => { u0(); u1(); u2(); u3(); u4(); u5(); u6(); };
   }, [identifier]);
 
-  return { workouts, logs, sessions, clientInfo, library, checkIns, loading };
+  return { workouts, logs, sessions, clientInfo, library, checkIns, measurements, loading };
 }

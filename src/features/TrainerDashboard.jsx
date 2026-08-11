@@ -468,197 +468,41 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
       {/* PLAN */}
       {activeTab==='plan'&&(
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl space-y-3`}>
-            <h4 className={`font-black text-base border-b pb-3 ${tx} border-slate-200`}>Assign Session</h4>
-            <ClientSelector clientNames={clientNames} value={targetClient} onChange={phone=>{setTargetClient(phone);setAnalyticsClient(phone);setSessionName('');}} placeholder="Select Client..."/>
-            {targetClient&&clientNames[targetClient]&&(
-              <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-sm" style={{backgroundColor: PHASE_COLORS[clientNames[targetClient]?.nasm_phase || 1]}}>{clientNames[targetClient]?.nasm_phase || 1}</div>
-                <div className="text-left">
-                  <p className="font-black text-sm text-slate-900">{titleCase(clientNames[targetClient]?.name||targetClient)}</p>
-                  <p className="text-[10px] text-slate-500">{NASM_OPT_PHASES[clientNames[targetClient]?.nasm_phase || 1]?.phase}</p>
-                </div>
-                {clientDays.length>0&&(
-                  <div className="ml-auto flex gap-1 flex-wrap justify-end">
-                    {clientDays.map((d,i)=>(
-                      <button key={d} onClick={()=>setSessionName(d)} className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${sessionName===d?'bg-slate-900 text-emerald-400':'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{d}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            <input type="text" placeholder="Day Name (e.g Day 4)" value={sessionName} onChange={e=>setSessionName(e.target.value)} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
-
-            <div className="rounded-2xl border-2 border-emerald-100 bg-emerald-50 p-4 space-y-3">
-              <div className="flex justify-between items-center gap-2">
-                <div>
-                  <h4 className="font-black text-sm text-slate-900 uppercase">Workout Templates</h4>
-                  <p className="text-[10px] font-black text-slate-500 uppercase">PPL, Fat Loss, Strength, Rehab</p>
-                </div>
-                <button onClick={applyTemplate} className="bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase">Apply</button>
-              </div>
-              <select value={templateName} onChange={e=>setTemplateName(e.target.value)} className="w-full p-3 bg-white border-2 border-emerald-100 rounded-xl font-black text-sm outline-none focus:border-emerald-500">
-                {Object.keys(WORKOUT_TEMPLATES).map(name=><option key={name} value={name}>{name}</option>)}
-              </select>
+          <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl space-y-4`}>
+            <div>
+              <h4 className={`font-black text-base border-b pb-3 ${tx} border-slate-200`}>Plan Actions</h4>
+              <p className="text-[10px] font-black text-slate-400 uppercase mt-2 leading-relaxed">
+                Batch tools only. The old manual assign form is gone.
+              </p>
             </div>
-
-            <div className="rounded-2xl border-2 border-slate-100 bg-slate-50 p-4 space-y-3">
-              <div className="flex justify-between items-center gap-2">
-                <div>
-                  <h4 className="font-black text-sm text-slate-900 uppercase">Copy Program</h4>
-                  <p className="text-[10px] font-black text-slate-500 uppercase">Clone all days from another client</p>
-                </div>
-                <button onClick={copyProgram} className="bg-slate-900 text-emerald-400 px-4 py-2 rounded-xl text-xs font-black uppercase">Copy</button>
-              </div>
-              <ClientSelector clientNames={clientNames} value={copyFromClient} onChange={setCopyFromClient} placeholder="Source Client..."/>
+            <div className="rounded-2xl bg-slate-50 border-2 border-slate-100 p-4 space-y-1.5">
+              <p className="text-[10px] font-black text-slate-400 uppercase">Current client</p>
+              <p className="font-black text-sm text-slate-900">
+                {targetClient && clientNames[targetClient] ? titleCase(clientNames[targetClient]?.name || targetClient) : 'No client selected'}
+              </p>
+              <p className="text-[10px] font-bold text-slate-500">
+                {targetClient ? 'Chosen from the Clients tab' : 'Open a client from the Clients tab first'}
+              </p>
             </div>
-            
-            {/* CSV Upload */}
-            <div className="border-2 border-dashed border-slate-300 rounded-2xl p-4 text-center">
-              <input type="file" accept=".csv" onChange={async(e)=>{
-                const file = e.target.files[0];
-                if(!file) return;
-                const text = await file.text();
-                const lines = text.split('\n').filter(l=>l.trim());
-                const [header, ...rows] = lines;
-                const cols = header.split(',').map(c=>c.trim().toLowerCase());
-                
-                if(!targetClient || !sessionName) { alert('Select client and day first'); return; }
-                
-                let count = 0;
-                for(const row of rows) {
-                  if(!row.trim()) continue;
-                  const values = row.split(',').map(v=>v.trim());
-                  const obj = {};
-                  cols.forEach((col,i)=>obj[col]=values[i]||'');
-                  
-                  if(!obj.name) continue;
-                  const csvAlternatives = getFilledAlternatives([
-                    { id:'1', name: obj.alt1 || obj.alternative1 || '', reason: obj.alt1reason || obj.alternative1reason || '' },
-                    { id:'2', name: obj.alt2 || obj.alternative2 || '', reason: obj.alt2reason || obj.alternative2reason || '' },
-                    { id:'3', name: obj.alt3 || obj.alternative3 || '', reason: obj.alt3reason || obj.alternative3reason || '' }
-                  ]);
-                  const muscleGroup = obj.musclegroup || obj.muscle || getMuscleGroup(obj.name) || (obj.category === 'CARDIO' ? 'Cardio' : 'Other');
-                  const alternatives = csvAlternatives.length ? csvAlternatives : getFilledAlternatives(suggestAlternatives({name:obj.name, category:obj.category || 'RESISTANCE', muscleGroup}));
-                  await addDoc(collection(db,'artifacts',appId,'public','data','workouts'),{
-                    name: obj.name,
-                    category: obj.category||'RESISTANCE',
-                    muscleGroup,
-                    sets: obj.sets||'3',
-                    reps: obj.reps||'10',
-                    tempo: obj.tempo||'',
-                    coachNote: obj.coachnote||'',
-                    gifUrl: obj.gifurl||'',
-                    alternatives,
-                    assignedTo: targetClient,
-                    day: sessionName,
-                    orderIndex: Date.now() + count
-                  });
-                  count++;
-                }
-                alert(`âœ… Imported ${count} exercises from CSV`);
-                e.target.value = '';
-              }} className="hidden" id="csvInput"/>
-              <label htmlFor="csvInput" className="cursor-pointer block">
-                <p className="font-black text-sm text-slate-900 mb-2">ðŸ“Š Import from CSV</p>
-                <p className="text-xs text-slate-500 mb-3">Click to upload or drag & drop</p>
-                <p className="text-[10px] text-slate-400">Format: name, category, musclegroup, sets, reps, tempo, coachnote, gifurl, alt1, alt1reason, alt2, alt2reason, alt3, alt3reason</p>
-              </label>
-            </div>
-            <SearchableDropdown options={libraryData} value={newEx.name} onChange={v=>{
-              const libEx = libraryData.find(l=>l.name===v);
-              const nextEx = {
-                ...newEx,
-                name:v,
-                category:libEx?.category || newEx.category,
-                muscleGroup:libEx ? getExerciseMuscle(libEx) : getMuscleGroup(v) || newEx.muscleGroup
-              };
-              setNewEx({...nextEx, alternatives: normalizeAlternatives(libEx?.alternatives?.length ? libEx.alternatives : applySuggestedAlternatives(nextEx, newEx.alternatives, libraryData))});
-            }} placeholder="Search or add exercise..." allowNew={true}/>
-            <div className="grid grid-cols-3 gap-2">
-              <input type="number" placeholder="Sets" value={newEx.sets} onChange={e=>setNewEx({...newEx,sets:e.target.value})} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
-              <input type="text" placeholder="Reps" value={newEx.reps} onChange={e=>setNewEx({...newEx,reps:e.target.value})} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none text-center focus:border-emerald-500 ${inp}`}/>
-              <select value={newEx.category} onChange={e=>{
-                const nextEx = {...newEx, category:e.target.value, muscleGroup:e.target.value === 'CARDIO' ? 'Cardio' : newEx.muscleGroup};
-                setNewEx({...nextEx, alternatives:getFilledAlternatives(newEx.alternatives).length ? newEx.alternatives : applySuggestedAlternatives(nextEx, newEx.alternatives, libraryData)});
-              }} className={`p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 ${inp}`}>
-                {CATEGORIES.map(cat=><option key={cat} value={cat}>{cat}</option>)}
-              </select>
-            </div>
-            <select value={newEx.muscleGroup} onChange={e=>{
-              const nextEx = {...newEx, muscleGroup:e.target.value};
-              setNewEx({...nextEx, alternatives:getFilledAlternatives(newEx.alternatives).length ? newEx.alternatives : applySuggestedAlternatives(nextEx, newEx.alternatives, libraryData)});
-            }} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}>
-              {MUSCLE_GROUPS.map(m=><option key={m} value={m}>{m}</option>)}
-            </select>
-            <input type="text" placeholder="Tempo (optional)" value={newEx.tempo} onChange={e=>setNewEx({...newEx,tempo:e.target.value})} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
-            <input type="text" placeholder="Coach Note (optional)" value={newEx.coachNote} onChange={e=>setNewEx({...newEx,coachNote:e.target.value})} className={`w-full p-3 border-2 rounded-2xl font-black text-sm outline-none focus:border-emerald-500 text-center ${inp}`}/>
-            <div className="rounded-2xl border-2 border-blue-100 bg-blue-50/50 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] font-black text-blue-600 uppercase">Client Alternatives (up to 3)</p>
-                <button
-                  type="button"
-                  onClick={()=>setNewEx({...newEx, alternatives: applySuggestedAlternatives(newEx, newEx.alternatives, libraryData)})}
-                  className="bg-blue-600 text-white px-3 py-1.5 rounded-xl font-black text-[10px] uppercase hover:bg-blue-700 transition-all"
-                >
-                  Suggest
-                </button>
-              </div>
-              {normalizeAlternatives(newEx.alternatives).map((alt, i) => (
-                <div key={alt.id} className="grid grid-cols-2 gap-2">
-                  {i < 2 ? (
-                    <select
-                      value={alt.name}
-                      onChange={e=>{
-                        const selected = getAlternativeOptions(newEx, alt.name, libraryData).find(option => option.name === e.target.value);
-                        const alternatives = normalizeAlternatives(newEx.alternatives);
-                        alternatives[i] = {...alternatives[i], name:e.target.value, reason:selected?.reason || alternatives[i].reason};
-                        setNewEx({...newEx, alternatives});
-                      }}
-                      className={`p-2 border rounded-xl font-black text-xs outline-none focus:border-blue-500 ${inp}`}
-                    >
-                      <option value="">{`Suggested ${i + 1}`}</option>
-                      {getAlternativeOptions(newEx, alt.name, libraryData).map(option => (
-                        <option key={`${i}-${option.name}`} value={option.name}>{option.name}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      placeholder="Manual alternative"
-                      value={alt.name}
-                      onChange={e=>{
-                        const alternatives = normalizeAlternatives(newEx.alternatives);
-                        alternatives[i] = {...alternatives[i], name:e.target.value};
-                        setNewEx({...newEx, alternatives});
-                      }}
-                      className={`p-2 border rounded-xl font-black text-xs outline-none focus:border-blue-500 ${inp}`}
-                    />
-                  )}
-                  <input
-                    type="text"
-                    placeholder="Reason"
-                    value={alt.reason}
-                    onChange={e=>{
-                      const alternatives = normalizeAlternatives(newEx.alternatives);
-                      alternatives[i] = {...alternatives[i], reason:e.target.value};
-                      setNewEx({...newEx, alternatives});
-                    }}
-                    className={`p-2 border rounded-xl font-black text-xs outline-none focus:border-blue-500 ${inp}`}
-                  />
-                </div>
-              ))}
-            </div>
-            <button onClick={async()=>{
-              if(!targetClient||!newEx.name)return;
-              const libEx=libraryData.find(l=>l.name===newEx.name);
-              await addDoc(collection(db,'artifacts',appId,'public','data','workouts'),{...newEx,muscleGroup:libEx ? getExerciseMuscle(libEx) : newEx.muscleGroup || getMuscleGroup(newEx.name) || 'Other',alternatives:getFilledAlternatives(newEx.alternatives),gifUrl:libEx?.gifUrl||'',assignedTo:targetClient,day:sessionName,orderIndex:Date.now()});
-              setNewEx({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'',alternatives:makeDefaultAlternatives()});
-              alert('Assigned âœ…');
-            }} className="w-full bg-slate-900 text-emerald-400 py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all">Assign Workout +</button>
-            <div className="flex gap-2">
-              <button onClick={()=>setShowTemplate(true)} className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">ðŸ“‹ Full Day Template</button>
-              <button onClick={()=>{setNewEx({name:'',category:'RESISTANCE',muscleGroup:'Other',sets:'3',reps:'10',tempo:'',coachNote:'**NEW**',alternatives:makeDefaultAlternatives()});}} className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all">âž• New Exercise</button>
+            <button
+              onClick={()=> targetClient ? setShowTemplate(true) : alert('Select a client from the Clients tab first')}
+              disabled={!targetClient}
+              className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm uppercase shadow-xl active:scale-95 transition-all disabled:opacity-40"
+            >
+              Full Day Template
+            </button>
+            <button
+              onClick={()=> targetClient ? applySmartProgram() : alert('Select a client from the Clients tab first')}
+              disabled={!targetClient}
+              className="w-full bg-slate-900 text-emerald-400 py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl active:scale-95 transition-all disabled:opacity-40"
+            >
+              Smart Program
+            </button>
+            <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+              <p className="font-black text-sm text-slate-900 mb-2">Need a new plan?</p>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Select a client, then use a template or smart generation instead of adding exercises one by one.
+              </p>
             </div>
           </div>
 
@@ -675,18 +519,6 @@ function TrainerDashboard({ workouts, logs, db, appId, clientNames }) {
                 onRemoveWeek={removeWeek}
                 onRenameWeek={renameWeek}
               />
-            </div>
-
-            <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl flex flex-col h-auto md:h-[450px]`}>
-              <h3 className={`font-black text-base border-b pb-3 mb-3 text-left ${tx} border-slate-200`}>Plan View: <span className="text-emerald-500 break-words">{sessionName||'---'}</span></h3>
-              <div className="flex-1 overflow-y-auto space-y-2 scrollbar-hide">
-                {workouts.filter(w=>w.assignedTo===targetClient&&w.day===sessionName).sort((a,b)=>a.orderIndex-b.orderIndex).map((ex,idx,arr)=>(
-                  <ExerciseEditRow key={ex.id} exercise={ex} idx={idx} arr={arr} db={db} appId={appId} libraryData={libraryData}/>
-                ))}
-                {workouts.filter(w=>w.assignedTo===targetClient&&w.day===sessionName).length===0&&(
-                  <p className={`text-xs font-black ${sub} text-center py-8`}>No exercises assigned</p>
-                )}
-              </div>
             </div>
 
             <div className={`${bg} border-2 p-6 rounded-[2.5rem] shadow-xl`}>

@@ -7,6 +7,7 @@ export const DEFAULT_CATEGORY_COUNTS = {
   'SKILL': 2,
   'RESISTANCE': 8,
   'CARDIO': 2,
+  'HIIT': 2,
   'COOL-DOWN': 0,
 };
 
@@ -20,14 +21,15 @@ function shuffle(arr) {
 }
 
 // Builds ordered exercise items for a full day, pulling only from existing library
-export function generateAutoDayItems(libraryData, { muscleFilter = '', categoryCounts = DEFAULT_CATEGORY_COUNTS, coachNote = '' } = {}) {
+export function generateAutoDayItems(libraryData, { muscleFilter = [], categoryCounts = DEFAULT_CATEGORY_COUNTS, coachNote = '' } = {}) {
+  const filterList = Array.isArray(muscleFilter) ? muscleFilter : (muscleFilter ? [muscleFilter] : []);
   const items = [];
   CATEGORIES.forEach(cat => {
     const count = categoryCounts[cat] || 0;
     if (!count) return;
     let pool = libraryData.filter(ex => ex.category === cat);
-    if (muscleFilter && (cat === 'RESISTANCE' || cat === 'SKILL')) {
-      const focused = pool.filter(ex => getExerciseMuscle(ex) === muscleFilter);
+    if (filterList.length && (cat === 'RESISTANCE' || cat === 'SKILL')) {
+      const focused = pool.filter(ex => filterList.includes(getExerciseMuscle(ex)));
       if (focused.length) pool = focused;
     }
     shuffle(pool).slice(0, count).forEach(ex => {
@@ -36,11 +38,26 @@ export function generateAutoDayItems(libraryData, { muscleFilter = '', categoryC
         category: cat,
         muscleGroup: getExerciseMuscle(ex),
         gifUrl: ex.gifUrl || '',
+        videoUrl: ex.videoUrl || '',
         sets: '3',
         reps: '10',
         tempo: '',
         coachNote,
         alternatives: ex.alternatives || [],
+        // HIIT: work/rest/rounds من المكتبة
+        ...(cat === 'HIIT' && {
+          workSeconds: ex.workSeconds || 30,
+          restSeconds: ex.restSeconds || 15,
+          rounds:      ex.rounds || 8,
+        }),
+        // CARDIO: metric + target duration/distance/calories + intervals من المكتبة
+        ...(cat === 'CARDIO' && {
+          cardioMetric:   ex.cardioMetric || 'duration',
+          targetDuration: ex.targetDuration || 0,
+          targetDistance: ex.targetDistance || 0,
+          targetCalories: ex.targetCalories || 0,
+          intervals:      Array.isArray(ex.intervals) ? ex.intervals : [],
+        }),
       });
     });
   });

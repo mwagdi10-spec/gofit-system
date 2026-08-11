@@ -5,6 +5,50 @@ import { getExerciseMuscle, getExerciseEquipment, getMuscleGroup, getEquipment, 
 import { makeDefaultAlternatives, normalizeAlternatives, getFilledAlternatives, getAlternativeOptions, applySuggestedAlternatives } from '../utils/validators';
 import { useBackButton } from '../hooks/useBackButton';
 
+let intervalUid = 0;
+function newInterval() {
+  intervalUid += 1;
+  return { id: `iv-${Date.now()}-${intervalUid}`, label: '', seconds: 60 };
+}
+
+// محرر مراحل الـ Cardio Intervals (سرعة/شدة + مدة لكل مرحلة)
+function IntervalsEditor({ intervals, onChange }) {
+  const list = intervals?.length ? intervals : [];
+
+  const addStage = () => onChange([...list, newInterval()]);
+  const removeStage = (id) => onChange(list.filter(iv => iv.id !== id));
+  const updateStage = (id, field, value) => onChange(list.map(iv => iv.id === id ? { ...iv, [field]: value } : iv));
+
+  return (
+    <div className="space-y-2 border-2 border-slate-200 rounded-xl p-3 bg-slate-50">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-black text-slate-500 uppercase">Interval Stages</p>
+        <button type="button" onClick={addStage} className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-lg font-black text-[10px] uppercase hover:bg-emerald-500 hover:text-white transition-all">+ Add Stage</button>
+      </div>
+      {list.length === 0 && <p className="text-[11px] font-bold text-slate-400 text-center py-2">No stages yet</p>}
+      {list.map((iv, i) => (
+        <div key={iv.id} className="grid grid-cols-[1fr_70px_auto] gap-1.5 items-center">
+          <input
+            type="text"
+            value={iv.label}
+            onChange={e => updateStage(iv.id, 'label', e.target.value)}
+            placeholder={`Speed/Intensity ${i + 1} (e.g. 8km/h)`}
+            className="p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 bg-white"
+          />
+          <input
+            type="number"
+            value={Math.round((iv.seconds || 0) / 60 * 10) / 10}
+            onChange={e => updateStage(iv.id, 'seconds', Math.max(1, Math.round((Number(e.target.value) || 0) * 60)))}
+            placeholder="min"
+            className="p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none text-center focus:border-emerald-500 bg-white"
+          />
+          <button type="button" onClick={() => removeStage(iv.id)} className="text-red-400 font-black text-xs px-1.5 hover:text-red-600">✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function EditExerciseModal({ exercise, onClose, db, appId, collectionName = 'workouts' }) {
   const [formData, setFormData] = useState({
     name: exercise.name,
@@ -16,14 +60,21 @@ export function EditExerciseModal({ exercise, onClose, db, appId, collectionName
     workSeconds: exercise.workSeconds || 30,
     restSeconds: exercise.restSeconds || 15,
     rounds: exercise.rounds || 8,
+    cardioMetric: exercise.cardioMetric || 'duration',
+    targetDuration: exercise.targetDuration || 20,
+    targetDistance: exercise.targetDistance || '',
+    targetCalories: exercise.targetCalories || '',
+    intervals: Array.isArray(exercise.intervals) ? exercise.intervals : [],
     tempo: exercise.tempo || '',
     gifUrl: exercise.gifUrl || '',
     videoUrl: exercise.videoUrl || '',
     description: exercise.description || '',
-    alternatives: normalizeAlternatives(exercise.alternatives)
+    alternatives: normalizeAlternatives(exercise.alternatives),
+    isHome: exercise.isHome === true
   });
   const [saving, setSaving] = useState(false);
   const isHiit = formData.category === 'HIIT';
+  const isCardio = formData.category === 'CARDIO';
 
   const handleSave = async () => {
     setSaving(true);
@@ -38,11 +89,17 @@ export function EditExerciseModal({ exercise, onClose, db, appId, collectionName
         workSeconds: Number(formData.workSeconds) || 30,
         restSeconds: Number(formData.restSeconds) || 15,
         rounds: Number(formData.rounds) || 8,
+        cardioMetric: formData.cardioMetric || 'duration',
+        targetDuration: Number(formData.targetDuration) || 0,
+        targetDistance: Number(formData.targetDistance) || 0,
+        targetCalories: Number(formData.targetCalories) || 0,
+        intervals: formData.cardioMetric === 'intervals' ? formData.intervals.filter(iv => iv.label.trim()) : [],
         tempo: formData.tempo,
         gifUrl: formData.gifUrl,
         videoUrl: formData.videoUrl,
         description: formData.description,
-        alternatives: getFilledAlternatives(formData.alternatives)
+        alternatives: getFilledAlternatives(formData.alternatives),
+        isHome: formData.isHome === true
       });
       onClose();
       alert('Exercise updated ✅');
@@ -90,6 +147,31 @@ export function EditExerciseModal({ exercise, onClose, db, appId, collectionName
               <input type="number" value={formData.restSeconds} onChange={e=>setFormData({...formData,restSeconds:e.target.value})} placeholder="Rest (sec)" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
               <input type="number" value={formData.rounds} onChange={e=>setFormData({...formData,rounds:e.target.value})} placeholder="Rounds" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
             </div>
+          ) : isCardio ? (
+            <div className="space-y-2">
+              <select value={formData.cardioMetric} onChange={e=>setFormData({...formData,cardioMetric:e.target.value})} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50">
+                <option value="duration">Duration (timer)</option>
+                <option value="distance">Distance (km)</option>
+                <option value="duration_distance">Duration + Distance</option>
+                <option value="calories">Calories</option>
+                <option value="intervals">Intervals (varying speed)</option>
+              </select>
+              {formData.cardioMetric === 'intervals' ? (
+                <IntervalsEditor intervals={formData.intervals} onChange={iv => setFormData({...formData, intervals: iv})} />
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {(formData.cardioMetric === 'duration' || formData.cardioMetric === 'duration_distance') && (
+                    <input type="number" value={formData.targetDuration} onChange={e=>setFormData({...formData,targetDuration:e.target.value})} placeholder="Target (min)" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
+                  )}
+                  {(formData.cardioMetric === 'distance' || formData.cardioMetric === 'duration_distance') && (
+                    <input type="number" value={formData.targetDistance} onChange={e=>setFormData({...formData,targetDistance:e.target.value})} placeholder="Target (km)" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
+                  )}
+                  {formData.cardioMetric === 'calories' && (
+                    <input type="number" value={formData.targetCalories} onChange={e=>setFormData({...formData,targetCalories:e.target.value})} placeholder="Target (kcal)" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
               <input type="number" value={formData.sets} onChange={e=>setFormData({...formData,sets:e.target.value})} placeholder="Default Sets" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
@@ -98,6 +180,11 @@ export function EditExerciseModal({ exercise, onClose, db, appId, collectionName
           )}
 
           <input type="text" value={formData.tempo} onChange={e=>setFormData({...formData,tempo:e.target.value})} placeholder="Tempo" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+          <label className="flex items-center gap-2 p-3 border-2 border-slate-200 rounded-xl bg-slate-50 cursor-pointer">
+            <input type="checkbox" checked={formData.isHome} onChange={e=>setFormData({...formData,isHome:e.target.checked})} className="w-4 h-4 accent-emerald-500"/>
+            <span className="font-black text-xs text-slate-600 uppercase">🏠 Home Exercise</span>
+          </label>
 
           <input type="text" value={formData.gifUrl} onChange={e=>setFormData({...formData,gifUrl:e.target.value})} placeholder="GIF URL" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
 
@@ -272,6 +359,16 @@ export function AddExerciseModal({ onClose, db, appId }) {
 
     rounds: 8,
 
+    cardioMetric: 'duration',
+
+    targetDuration: 20,
+
+    targetDistance: '',
+
+    targetCalories: '',
+
+    intervals: [],
+
     tempo: '',
 
     gifUrl: '',
@@ -280,13 +377,16 @@ export function AddExerciseModal({ onClose, db, appId }) {
 
     description: '',
 
-    alternatives: makeDefaultAlternatives()
+    alternatives: makeDefaultAlternatives(),
+
+    isHome: false
 
   });
 
   const [saving, setSaving] = useState(false);
 
   const isHiit = formData.category === 'HIIT';
+  const isCardio = formData.category === 'CARDIO';
 
 
 
@@ -324,6 +424,16 @@ export function AddExerciseModal({ onClose, db, appId }) {
 
         rounds: Number(formData.rounds) || 8,
 
+        cardioMetric: formData.cardioMetric || 'duration',
+
+        targetDuration: Number(formData.targetDuration) || 0,
+
+        targetDistance: Number(formData.targetDistance) || 0,
+
+        targetCalories: Number(formData.targetCalories) || 0,
+
+        intervals: formData.cardioMetric === 'intervals' ? formData.intervals.filter(iv => iv.label.trim()) : [],
+
         tempo: formData.tempo || '',
 
         gifUrl: formData.gifUrl || '',
@@ -333,6 +443,8 @@ export function AddExerciseModal({ onClose, db, appId }) {
         description: formData.description || '',
 
         alternatives: getFilledAlternatives(formData.alternatives),
+
+        isHome: formData.isHome === true,
 
         createdAt: serverTimestamp()
 
@@ -437,6 +549,33 @@ export function AddExerciseModal({ onClose, db, appId }) {
 
             </div>
 
+          ) : isCardio ? (
+
+            <div className="space-y-2">
+              <select value={formData.cardioMetric} onChange={e=>setFormData({...formData,cardioMetric:e.target.value})} className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50">
+                <option value="duration">Duration (timer)</option>
+                <option value="distance">Distance (km)</option>
+                <option value="duration_distance">Duration + Distance</option>
+                <option value="calories">Calories</option>
+                <option value="intervals">Intervals (varying speed)</option>
+              </select>
+              {formData.cardioMetric === 'intervals' ? (
+                <IntervalsEditor intervals={formData.intervals} onChange={iv => setFormData({...formData, intervals: iv})} />
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {(formData.cardioMetric === 'duration' || formData.cardioMetric === 'duration_distance') && (
+                    <input type="number" value={formData.targetDuration} onChange={e=>setFormData({...formData,targetDuration:e.target.value})} placeholder="Target (min)" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
+                  )}
+                  {(formData.cardioMetric === 'distance' || formData.cardioMetric === 'duration_distance') && (
+                    <input type="number" value={formData.targetDistance} onChange={e=>setFormData({...formData,targetDistance:e.target.value})} placeholder="Target (km)" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
+                  )}
+                  {formData.cardioMetric === 'calories' && (
+                    <input type="number" value={formData.targetCalories} onChange={e=>setFormData({...formData,targetCalories:e.target.value})} placeholder="Target (kcal)" className="p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none text-center focus:border-emerald-500 bg-slate-50"/>
+                  )}
+                </div>
+              )}
+            </div>
+
           ) : (
 
             <div className="grid grid-cols-2 gap-2">
@@ -452,6 +591,11 @@ export function AddExerciseModal({ onClose, db, appId }) {
 
 
           <input type="text" value={formData.tempo} onChange={e=>setFormData({...formData,tempo:e.target.value})} placeholder="Tempo (e.g 2-0-2-0)" className="w-full p-3 border-2 border-slate-200 rounded-xl font-black text-sm outline-none focus:border-emerald-500 bg-slate-50"/>
+
+          <label className="flex items-center gap-2 p-3 border-2 border-slate-200 rounded-xl bg-slate-50 cursor-pointer">
+            <input type="checkbox" checked={formData.isHome} onChange={e=>setFormData({...formData,isHome:e.target.checked})} className="w-4 h-4 accent-emerald-500"/>
+            <span className="font-black text-xs text-slate-600 uppercase">🏠 Home Exercise</span>
+          </label>
 
 
 

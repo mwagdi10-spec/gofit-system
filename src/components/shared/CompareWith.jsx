@@ -16,9 +16,9 @@ function buildComparison(periodLogs, prevPeriodLogs) {
 }
 
 const MODES = [
-  { id: 'week',  label: 'This vs Last Week' },
-  { id: 'month', label: 'This vs Last Month' },
-  { id: 'split', label: 'Before / After' },
+  { id: 'week',  label: 'Week' },
+  { id: 'month', label: 'Month' },
+  { id: 'split', label: 'Before/After' },
 ];
 
 export default function CompareWith({ logs = [] }) {
@@ -66,15 +66,13 @@ export default function CompareWith({ logs = [] }) {
   const cmp = useMemo(() => buildComparison(current, previous), [current, previous]);
 
   return (
-    <div className="bg-[#1C1C38] border border-[#2A2A50] rounded-2xl p-5">
-      <p className="text-white font-bold mb-3">Compare With</p>
-
-      <div className="flex bg-[#14142B] border border-[#2A2A50] rounded-xl p-1 mb-3">
+    <div className="bg-[#1C1C38] border border-[#2A2A50] rounded-2xl p-3">
+      <div className="flex bg-[#14142B] border border-[#2A2A50] rounded-xl p-1 mb-2">
         {MODES.map(m => (
           <button
             key={m.id}
             onClick={() => setMode(m.id)}
-            className={`flex-1 text-[10px] font-black py-2 rounded-lg transition-colors
+            className={`flex-1 text-[10px] font-black py-1.5 rounded-lg transition-colors
               ${mode === m.id ? 'bg-blue-500 text-white' : 'text-slate-400'}`}
           >
             {m.label}
@@ -87,26 +85,26 @@ export default function CompareWith({ logs = [] }) {
           type="date"
           value={splitDate}
           onChange={e => setSplitDate(e.target.value)}
-          className="w-full bg-[#14142B] border border-[#2A2A50] rounded-xl px-3 py-2 text-sm text-white mb-3 outline-none focus:border-blue-500"
+          className="w-full bg-[#14142B] border border-[#2A2A50] rounded-lg px-2.5 py-1.5 text-xs text-white mb-2 outline-none focus:border-blue-500"
         />
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-[#14142B] border border-[#2A2A50] rounded-xl p-3 text-center">
-          <p className={`text-2xl font-black ${cmp.volumeDeltaPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-[#14142B] border border-[#2A2A50] rounded-lg p-2 text-center">
+          <p className={`text-lg font-black ${cmp.volumeDeltaPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             {cmp.volumeDeltaPct >= 0 ? '+' : ''}{cmp.volumeDeltaPct}%
           </p>
-          <p className="text-slate-400 text-[10px] mt-1">Volume change</p>
+          <p className="text-slate-400 text-[9px] mt-0.5">Volume change</p>
         </div>
-        <div className="bg-[#14142B] border border-[#2A2A50] rounded-xl p-3 text-center">
-          <p className={`text-2xl font-black ${cmp.sessionDelta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+        <div className="bg-[#14142B] border border-[#2A2A50] rounded-lg p-2 text-center">
+          <p className={`text-lg font-black ${cmp.sessionDelta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             {cmp.sessionDelta >= 0 ? '+' : ''}{cmp.sessionDelta}
           </p>
-          <p className="text-slate-400 text-[10px] mt-1">Sessions change</p>
+          <p className="text-slate-400 text-[9px] mt-0.5">Sessions change</p>
         </div>
       </div>
 
-      <div className="flex items-center justify-between mt-3 text-[10px] text-slate-400">
+      <div className="flex items-center justify-between mt-2 text-[9px] text-slate-400">
         <span>{previousLabel}: {Math.round(cmp.previousVolume)}kg · {cmp.previousDays}d</span>
         <span>{currentLabel}: {Math.round(cmp.currentVolume)}kg · {cmp.currentDays}d</span>
       </div>

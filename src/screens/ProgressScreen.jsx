@@ -7,6 +7,8 @@ import MuscleBodyMap from '../components/shared/MuscleBodyMap';
 import WorkoutCalendar from '../components/shared/WorkoutCalendar';
 import GoalsCard from '../components/shared/GoalsCard';
 
+const LIST_PAGE_SIZE = 6;
+
 function fmtDate(ts) {
   const d = ts?.toDate?.();
   if (!d) return '';
@@ -15,12 +17,15 @@ function fmtDate(ts) {
 
 export default function ProgressScreen({ navigate, current, user = {}, muscleProgress = [], weeklyLoad = [], identifier = '', recoveryMap = [], initialTab = '' }) {
   const [expandedMuscle, setExpandedMuscle] = useState(null);
+  const [progressionOpen, setProgressionOpen] = useState(false);
   const [tab, setTab] = useState(initialTab || 'progress'); // 'progress' | 'calendar' | 'history' | 'records'
   const [historyLogs, setHistoryLogs] = useState([]);
   const [goals, setGoals] = useState([]);
   const [recordSearch, setRecordSearch] = useState('');
   const [historySearch, setHistorySearch] = useState('');
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [recordsExpanded, setRecordsExpanded] = useState(false);
 
   // سجل كامل بدون حد 30 يوم (منفصل عن logs المستخدمة في باقي الشاشات)
   useEffect(() => {
@@ -102,6 +107,14 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
     if (!q) return latestByExercise;
     return latestByExercise.filter(l => l.exerciseName.toLowerCase().includes(q));
   }, [latestByExercise, historySearch]);
+
+  // بحث نشط = يعرض كل النتائج المطابقة بدون تقليم؛ غير كده يعرض 6 بس مع زرار More
+  const visibleHistory = (historySearch.trim() || historyExpanded)
+    ? filteredHistory
+    : filteredHistory.slice(0, LIST_PAGE_SIZE);
+  const visibleRecords = (recordSearch.trim() || recordsExpanded)
+    ? filteredRecords
+    : filteredRecords.slice(0, LIST_PAGE_SIZE);
 
   const commitPct = user.weeklyGoal
     ? Math.round((user.weeklyProgress / user.weeklyGoal) * 100)
@@ -212,8 +225,14 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
           {/* Muscle Strength Progression */}
           {muscleProgress.length > 0 ? (
             <div className="bg-[#1C1C38] border border-[#2A2A50] rounded-2xl overflow-hidden">
-              <p className="text-white font-bold px-5 pt-5 pb-3">Strength Progression</p>
-              {muscleProgress.map((m, i) => {
+              <button
+                onClick={() => setProgressionOpen(o => !o)}
+                className="w-full flex items-center justify-between px-5 pt-5 pb-3 text-left"
+              >
+                <span className="text-white font-bold">Strength Progression</span>
+                <span className="text-slate-400 text-xs">{progressionOpen ? '▲' : '▾'}</span>
+              </button>
+              {progressionOpen && muscleProgress.map((m, i) => {
                 const ceil    = (m.current_weight || 1) * 1.25;
                 const startW  = `${((m.start_weight   || 0) / ceil) * 100}%`;
                 const curW    = `${((m.current_weight || 0) / ceil) * 100}%`;
@@ -222,7 +241,7 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
                   : 0;
                 const isOpen  = expandedMuscle === m.name;
                 return (
-                  <div key={m.name} className={i > 0 ? 'border-t border-[#2A2A50]' : ''}>
+                  <div key={m.name} className="border-t border-[#2A2A50]">
                     <button
                       onClick={() => setExpandedMuscle(isOpen ? null : m.name)}
                       className="w-full px-5 py-3 text-left"
@@ -302,7 +321,7 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
             </div>
           )}
 
-          {filteredHistory.map(entry => {
+          {visibleHistory.map(entry => {
             const exMax = maxByExercise[entry.exerciseName] || 0;
             const isPR  = exMax > 0 && (entry.maxWeight || 0) === exMax;
             return (
@@ -326,6 +345,15 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
               </div>
             );
           })}
+
+          {!historySearch.trim() && !historyExpanded && filteredHistory.length > LIST_PAGE_SIZE && (
+            <button
+              onClick={() => setHistoryExpanded(true)}
+              className="w-full text-center py-3 text-blue-400 text-sm font-black"
+            >
+              More ({filteredHistory.length - LIST_PAGE_SIZE})
+            </button>
+          )}
         </div>
       )}
 
@@ -349,7 +377,7 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
             </div>
           )}
 
-          {filteredRecords.map(r => (
+          {visibleRecords.map(r => (
             <div key={r.name} className="flex items-center justify-between bg-[#1C1C38] border border-[#2A2A50] rounded-2xl px-4 py-3">
               <div className="flex items-center gap-3">
                 <span className="text-lg">{r.rank === 0 ? '🥇' : r.rank === 1 ? '🥈' : r.rank === 2 ? '🥉' : '🏆'}</span>
@@ -361,6 +389,15 @@ export default function ProgressScreen({ navigate, current, user = {}, musclePro
               <p className="text-blue-400 text-lg font-black">{r.weight}kg</p>
             </div>
           ))}
+
+          {!recordSearch.trim() && !recordsExpanded && filteredRecords.length > LIST_PAGE_SIZE && (
+            <button
+              onClick={() => setRecordsExpanded(true)}
+              className="w-full text-center py-3 text-blue-400 text-sm font-black"
+            >
+              More ({filteredRecords.length - LIST_PAGE_SIZE})
+            </button>
+          )}
         </div>
       )}
 

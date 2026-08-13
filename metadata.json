@@ -1,0 +1,6 @@
+{
+  "name": "مدرب اللياقة - CoachFit",
+  "description": "تطبيق متكامل لمدربي ومتدربي اللياقة البدنية: تصميم البرامج المخصصة، تتبع التطور بشرائح ورسوم بيانية، محادثة فورية، تقييم الأداء بالذكاء الاصطناعي، وإدارة الاشتراكات",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
